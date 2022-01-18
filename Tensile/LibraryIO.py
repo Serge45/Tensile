@@ -66,7 +66,7 @@ def writeMsgPack(filename, data):
     with open(filename, "wb") as f:
         msgpack.pack(data, f)
 
-def writeSolutions(filename, problemSizes, solutions, cache=False):
+def writeSolutions(filename, problemSizes, activationArgs, solutions, cache=False):
     """Writes solution YAML file."""
 
     # convert objects to nested dictionaries
@@ -85,6 +85,8 @@ def writeSolutions(filename, problemSizes, solutions, cache=False):
                     solutionState["ProblemType"]["DestDataType"].value
             solutionState["ProblemType"]["ComputeDataType"] = \
                     solutionState["ProblemType"]["ComputeDataType"].value
+            solutionState["ProblemType"]["ActivationType"] = \
+                    solutionState["ProblemType"]["ActivationType"].value
             solutionStates.append(solutionState)
     # write dictionaries
     with open(filename, "w") as f:
@@ -96,7 +98,10 @@ def writeSolutions(filename, problemSizes, solutions, cache=False):
             for problemExact in problemSizes.exacts:
                 #FIXME-problem, this ignores strides:
                 f.write("  - Exact: %s\n" % str(problemExact))
-
+        if activationArgs:
+            f.write("- ActivationArgs:\n")
+            for setting in activationArgs.settingList:
+                f.write("  - [Enum: %s]\n"%(setting.activationEnum))
         yaml.dump(solutionStates, f, default_flow_style=None)
 
 
@@ -128,9 +133,13 @@ def parseSolutionsData(data, srcFile="?"):
         printExit("Solution file {} doesn't begin with ProblemSizes".format(srcFile))
 
     problemSizesConfig = data[1]["ProblemSizes"]
+    solutionStartIdxInData = 2
+    if len(data) > 2:
+        if "ActivationArgs" in data[2]:
+            solutionStartIdxInData += 1
 
     solutions = []
-    for i in range(2, len(data)):
+    for i in range(solutionStartIdxInData, len(data)):
         solutionState = data[i]
         # force redo the deriving of parameters, make sure old version logic yamls can be validated
         solutionState["AssignedProblemIndependentDerivedParameters"] = False
@@ -243,6 +252,8 @@ def createLibraryLogic(schedulePrefix, architectureName, deviceNames, logicTuple
             problemTypeState["DestDataType"].value
     problemTypeState["ComputeDataType"] = \
             problemTypeState["ComputeDataType"].value
+    problemTypeState["ActivationType"] = \
+            problemTypeState["ActivationType"].value
     data.append(problemTypeState)
     # solutions
     solutionList = []
@@ -255,6 +266,8 @@ def createLibraryLogic(schedulePrefix, architectureName, deviceNames, logicTuple
                 solutionState["ProblemType"]["DestDataType"].value
         solutionState["ProblemType"]["ComputeDataType"] = \
                 solutionState["ProblemType"]["ComputeDataType"].value
+        solutionState["ProblemType"]["ActivationType"] = \
+                solutionState["ProblemType"]["ActivationType"].value
         solutionList.append(solutionState)
 
     if tileSelection:
@@ -268,6 +281,8 @@ def createLibraryLogic(schedulePrefix, architectureName, deviceNames, logicTuple
                     solutionState["ProblemType"]["DestDataType"].value
             solutionState["ProblemType"]["ComputeDataType"] = \
                     solutionState["ProblemType"]["ComputeDataType"].value
+            solutionState["ProblemType"]["ActivationType"] = \
+                    solutionState["ProblemType"]["ActivationType"].value
             solutionList.append(solutionState)
 
     data.append(solutionList)

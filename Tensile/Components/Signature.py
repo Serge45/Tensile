@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright 2020 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright 2020-2022 Advanced Micro Devices, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -149,6 +149,7 @@ class SignatureCOV2(Signature):
         srcValueType = kernel["ProblemType"]["DataType"].toNameAbbrev().upper()
         dstValueType = kernel["ProblemType"]["DestDataType"].toNameAbbrev().upper()
         cptValueType = kernel["ProblemType"]["ComputeDataType"].toNameAbbrev().upper()
+        actValueType = kernel["ProblemType"]["DestDataType"].toNameAbbrev().upper()
         cptByte = kernel["ProblemType"]["ComputeDataType"].numBytes()
 
         # Codeobject V2 metadata
@@ -179,6 +180,15 @@ class SignatureCOV2(Signature):
         kStr += self.v2Argument(                             "alpha", useSize, useAlign,      "ByValue", cptValueType); ka_size += useSize
         if kernel["ProblemType"]["UseBeta"]:
             kStr += self.v2Argument(                          "beta", useSize, useAlign,      "ByValue", cptValueType); ka_size += useSize
+
+        if ((kernel["ProblemType"]["ActivationType"] != 'none') and (kernel["_GlobalAccumulation"] != 'MultipleBuffer') \
+            and kernel["ActivationFused"]):
+          activationSize = max(4, kernel["ProblemType"]["DestDataType"].numBytes())
+          activationValueType = actValueType
+          for name in kernel["ProblemType"]["ActivationType"].getAdditionalArgStringList():
+            kStr += self.v2Argument(                            name,activationSize,activationSize,"ByValue",activationValueType); ka_size += useSize
+          if kernel["ProblemType"]["ActivationType"] == 'all':
+            kStr += self.v2Argument(                "activationType",     '4',      '4',      "ByValue",        "U32"); ka_size += 4
 
         for i in range(0, writer.numSgprStridesD):
             kStr += self.v2Argument(                   "strideD%u"%i,     '4',      '4',      "ByValue",        "U32"); ka_size += 4
@@ -370,6 +380,7 @@ class SignatureCOV3(Signature):
         srcValueType = kernel["ProblemType"]["DataType"].toNameAbbrev()
         dstValueType = kernel["ProblemType"]["DestDataType"].toNameAbbrev()
         cptValueType = kernel["ProblemType"]["ComputeDataType"].toNameAbbrev()
+        actValueType = kernel["ProblemType"]["DestDataType"].toNameAbbrev()
         cptByte = kernel["ProblemType"]["ComputeDataType"].numBytes()
 
         # Codeobject V3 metadata
@@ -404,6 +415,15 @@ class SignatureCOV3(Signature):
         kStr += self.v3Argument(                             "alpha", useSize, offset,      "by_value", cptValueType); offset += useSize
         if kernel["ProblemType"]["UseBeta"]:
             kStr += self.v3Argument(                          "beta", useSize, offset,      "by_value", cptValueType); offset += useSize
+
+        if ((kernel["ProblemType"]["ActivationType"] != 'none') and (kernel["_GlobalAccumulation"] != 'MultipleBuffer') \
+            and kernel["ActivationFused"]):
+          activationSize = max(4, kernel["ProblemType"]["DestDataType"].numBytes())
+          activationValueType = actValueType
+          for name in kernel["ProblemType"]["ActivationType"].getAdditionalArgStringList():
+            kStr += self.v3Argument(                          name,activationSize,offset,   "by_value",activationValueType); offset += useSize
+          if kernel["ProblemType"]["ActivationType"] == 'all':
+            kStr += self.v3Argument(                "activationType",     '4', offset,      "by_value",        "u32"); offset += 4
 
         for i in range(0, writer.numSgprStridesD):
             kStr += self.v3Argument(                   "strideD%u"%i,     '4', offset,      "by_value",        "u32"); offset += 4

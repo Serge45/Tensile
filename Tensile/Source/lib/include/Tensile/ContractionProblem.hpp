@@ -1,7 +1,7 @@
 /**
  * MIT License
  *
- * Copyright 2019-2021 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright 2019-2022 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <Tensile/Activation.hpp>
 #include <Tensile/ArithmeticUnitTypes.hpp>
 #include <Tensile/KernelLanguageTypes.hpp>
 #include <Tensile/PerformanceMetricTypes.hpp>
@@ -613,6 +614,36 @@ namespace Tensile
             return m_fp16AltImpl;
         }
 
+        void setActivationType(ActivationType activationtype)
+        {
+            m_activationType = activationtype;
+        }
+
+        ActivationType activationType() const
+        {
+            return m_activationType;
+        }
+
+        void setActivationHPA(bool value)
+        {
+            m_activationHPA = value;
+        }
+
+        bool activationHPA() const
+        {
+            return m_activationHPA;
+        }
+
+        void setActivationEnumArg(ActivationType activationEnumArg)
+        {
+            m_activationEnumArg = activationEnumArg;
+        }
+
+        ActivationType activationEnumArg() const
+        {
+            return m_activationEnumArg;
+        }
+
         /// Largest of the free and bound indices.  Does not include batch size.
         size_t maxProblemSize() const
         {
@@ -794,6 +825,9 @@ namespace Tensile
         bool              m_deterministicMode       = false;
         bool              m_eligibleForPK           = true;
         bool              m_fp16AltImpl             = false;
+        ActivationType    m_activationType          = ActivationType::None;
+        ActivationType    m_activationEnumArg       = ActivationType::None;
+        bool              m_activationHPA           = false;
         ArithmeticUnit    m_arithmeticUnit          = ArithmeticUnit::Any;
         KernelLanguage    m_kernelLanguage          = KernelLanguage::Any;
         PerformanceMetric m_performanceMetric       = PerformanceMetric::DeviceEfficiency;
@@ -926,6 +960,8 @@ namespace Tensile
 
         Alpha alpha = static_cast<Alpha>(0);
         Beta  beta  = static_cast<Beta>(0);
+
+        std::vector<D> activationArgs;
 
         constexpr static uint32_t TypeId()
         {

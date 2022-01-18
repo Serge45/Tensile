@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .Activation import ActivationType
 from .DataType import DataType
 from . import Hardware
 from . import Properties
@@ -59,7 +60,8 @@ class BoundIndex:
 
 class ProblemType:
     StateKeys = ['operationIdentifier', 'aType', 'bType', 'cType', 'dType',
-                 'useBeta', 'highPrecisionAccumulate', 'useInitialStridesAB', 'useInitialStridesCD', 'stridedBatched']
+                 'useBeta', 'highPrecisionAccumulate', 'useInitialStridesAB', 'useInitialStridesCD', 'stridedBatched',
+                 'activationType', 'activationHPA']
     @classmethod
     def FromOriginalState(cls, d):
         indices = [None]*d['TotalIndices']
@@ -163,6 +165,13 @@ class ProblemType:
 
         rv.batched = d['Batched']
 
+        rv.activationType = ActivationType('none')
+        if 'ActivationType' in d:
+          rv.activationType = d['ActivationType']
+        rv.activationHPA = False
+        if 'ActivationHPA' in d:
+          rv.activationHPA = d['ActivationHPA']
+
         return rv
 
     def __init__(self, freeIndices=None, batchIndices=None, boundIndices=None, aDims=None, bDims=None, cDims=None, dDims=None):
@@ -239,11 +248,21 @@ class ProblemType:
             predicates.append(ProblemPredicate("OperationIdentifierEqual", value=self.operationIdentifier))
             if not self.useBeta:
                 predicates.append(ProblemPredicate("BetaZero"))
+            predicates.append(ProblemPredicate("Activation", value=self.activationType))
+            if self.activationType == 'all':
+                activationCDataType = self.betaType if self.activationHPA else self.dType
+                enumList = ActivationType.getEnumStrList(activationCDataType)
+                wlStr = ""
+                for actType in enumList:
+                    wlStr += ActivationType(actType).toEnum() + ","
+                wlStr = wlStr.rstrip(',')
+                predicates.append(ProblemPredicate("ActivationEnumWhiteList", value=wlStr))
             predicates.append(ProblemPredicate("StridedBatched", value=self.stridedBatched))
 
         if includeType:
             predicates.append(ProblemPredicate("TypesEqual", value=(self.aType, self.bType, self.cType, self.dType)))
             predicates.append(ProblemPredicate("HighPrecisionAccumulate", value=self.highPrecisionAccumulate))
+            predicates.append(ProblemPredicate("ActivationHPA", value=self.activationHPA))
 
         return predicates
 
@@ -415,6 +434,7 @@ class SizeMapping:
                  'sourceKernel',
                  'globalAccumulation',
                  'workspaceSizePerElemC',
+                 'activationFused'
                  ]
 
     @classmethod
@@ -440,6 +460,7 @@ class SizeMapping:
                    sourceKernel          = d['KernelLanguage'] == 'Source',
                    globalAccumulation    = globalAccum,
                    workspaceSizePerElemC = d['_WorkspaceSizePerElemC'],
+                   activationFused       = d['ActivationFused']
                    )
 
     @classmethod

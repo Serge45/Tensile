@@ -150,6 +150,7 @@ globalParameters["DataInitTypeC"]  = 3
 globalParameters["DataInitTypeD"]  = 0
 globalParameters["DataInitTypeAlpha"] = 2
 globalParameters["DataInitTypeBeta"] = 2
+globalParameters["DataInitValueActivationArgs"] = [2.0, 2.0]
 globalParameters["CEqualD"] = False               # Set to true if testing for the case where the pointer to C is the same as D.
 globalParameters["BufferOffsetA"] = 0             # data offset of buffer A
 globalParameters["BufferOffsetB"] = 0             # data offset of buffer B
@@ -1215,6 +1216,9 @@ validParameters = {
     "MinVgprNumber":                list(range(0,256)),
 
     "MaxVgprNumber":                list(range(0,257)),
+
+    # Debug use only.
+    "ActivationFused":             [False, True]
     }
 
 
@@ -1355,7 +1359,8 @@ defaultBenchmarkCommonParameters = [
     {"StoreCInUnrollInterval":    [ 1 ] },
     {"StoreCInUnrollExact":       [ False ] },
     {"StoreCInUnrollPostLoop":    [ False ] },
-    {"Fp16AltImpl":               [ False ] }
+    {"Fp16AltImpl":               [ False ] },
+    {"ActivationFused":           [ True  ] }
     ]
 
 # dictionary of defaults comprised of default option for each parameter
@@ -1559,7 +1564,11 @@ defaultProblemType = {
     "TileAwareSelection":       False,
 
     # FP16 Alternate Implementation
-    "Fp16AltImpl":              False
+    "Fp16AltImpl":              False,
+
+    # Activation
+    "Activation":               False,
+    "ActivationHPA":            False
     }
 
 defaultProblemSizes = [{"Range": [ [2880], 0, 0 ]}]

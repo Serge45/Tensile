@@ -2,7 +2,7 @@
  *
  * MIT License
  *
- * Copyright 2019-2020 Advanced Micro Devices, Inc.
+ * Copyright 2019-2022 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -81,6 +81,8 @@ namespace Tensile
                 return "DenormMin";
             case InitMode::DenormMax:
                 return "DenormMax";
+            case InitMode::RandomNegPosLimited:
+                return "RandomNegPosLimited";
 
             case InitMode::Count:
                 break;
@@ -142,6 +144,8 @@ namespace Tensile
                 mode = InitMode::DenormMin;
             else if(strValue == ToString(InitMode::DenormMax))
                 mode = InitMode::DenormMax;
+            else if(strValue == ToString(InitMode::RandomNegPosLimited))
+                mode = InitMode::RandomNegPosLimited;
             else if(std::all_of(strValue.begin(), strValue.end(), isdigit))
             {
                 int value = atoi(strValue.c_str());
@@ -342,6 +346,8 @@ namespace Tensile
             , m_dInit(args["init-d"].as<InitMode>())
             , m_alphaInit(args["init-alpha"].as<InitMode>())
             , m_betaInit(args["init-beta"].as<InitMode>())
+            , m_activationType(ActivationType::None)
+            , m_activationHPA(false)
             , m_aBufferOffset(args["offset-a"].as<size_t>())
             , m_bBufferOffset(args["offset-b"].as<size_t>())
             , m_cBufferOffset(args["offset-c"].as<size_t>())
@@ -415,6 +421,14 @@ namespace Tensile
             }
             m_problemDependentData = IsProblemDependent(m_aInit) || IsProblemDependent(m_bInit)
                                      || IsProblemDependent(m_cInit) || IsProblemDependent(m_dInit);
+
+            if(args.count("activation-type"))
+                m_activationType = args["activation-type"].as<ActivationType>();
+            if(args.count("activation-hpa"))
+                m_activationHPA = args["activation-hpa"].as<bool>();
+            if(args.count("activation-additional-args"))
+                m_activationAdditionalArgs
+                    = args["activation-additional-args"].as<std::vector<std::vector<double>>>();
         }
 
         DataInitialization::~DataInitialization() {}

@@ -1390,6 +1390,97 @@ namespace Tensile
                     return true;
                 }
             };
+
+            // Activation
+            struct ActivationEqual : public Predicate_CRTP<ActivationEqual, ContractionProblem>
+            {
+                enum
+                {
+                    HasIndex = false,
+                    HasValue = true
+                };
+                ActivationType value;
+
+                ActivationEqual() = default;
+                ActivationEqual(ActivationType value)
+                    : value(value)
+                {
+                }
+
+                static std::string Type()
+                {
+                    return "Activation";
+                }
+
+                virtual bool operator()(ContractionProblem const& problem) const override
+                {
+                    return problem.activationType() == value;
+                }
+            };
+
+            struct ActivationEnumWhiteList
+                : public Predicate_CRTP<ActivationEnumWhiteList, ContractionProblem>
+            {
+                enum
+                {
+                    HasIndex = false,
+                    HasValue = true
+                };
+                ActivationEnumWhiteList() = default;
+
+                std::string value;
+
+                static std::string Type()
+                {
+                    return "ActivationEnumWhiteList";
+                }
+
+                virtual bool operator()(ContractionProblem const& problem) const override
+                {
+                    if(problem.activationType() == ActivationType::All)
+                    {
+                        auto problemEnum = ToString(problem.activationEnumArg());
+                        if(value.find(problemEnum) != std::string::npos)
+                        {
+                            return true;
+                        }
+                        return false;
+                    }
+                    return true;
+                }
+
+                virtual std::string toString() const override
+                {
+                    return std::string("The supported activations are: " + value);
+                }
+            };
+
+            struct ActivationHPAEqual
+                : public Predicate_CRTP<ActivationHPAEqual, ContractionProblem>
+            {
+                enum
+                {
+                    HasIndex = false,
+                    HasValue = true
+                };
+                bool value;
+
+                ActivationHPAEqual() = default;
+                ActivationHPAEqual(bool value)
+                    : value(value)
+                {
+                }
+
+                static std::string Type()
+                {
+                    return "ActivationHPA";
+                }
+
+                virtual bool operator()(ContractionProblem const& problem) const override
+                {
+                    return problem.activationHPA() == value;
+                }
+            };
         } // namespace Contraction
 
         /**

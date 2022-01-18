@@ -21,6 +21,7 @@
 
 from __future__ import print_function
 from .Common import globalParameters, printExit
+from copy import deepcopy
 import ctypes
 # Global to print module names around strings
 printModuleNames = 0
@@ -42,7 +43,8 @@ class Item:
   Base class for Modules, Instructions, etc
   Item is a atomic collection of or more instructions and commentsA
   """
-  pass
+  def __init__(self):
+    self.parent = ""
 
   def toStr(self):
     return str(self)
@@ -73,6 +75,13 @@ class Module(Item):
   def findNamedItem(self, targetName):
     return next((item for item in self.itemList if item.name==targetName), None)
 
+  def setInlineAsmPrintMode(self, mode):
+    for item in self.itemList:
+      if isinstance(item, Inst):
+        item.setInlineAsmPrintMode(mode)
+      elif isinstance(item, Module):
+        item.setInlineAsmPrintMode(mode)
+
   def __str__(self):
     s = ""
     if printModuleNames:
@@ -93,12 +102,43 @@ class Module(Item):
     """
     #assert (isinstance(item, Item)) # for debug
     if isinstance(item,Item):
+      item.parent = self
       self.itemList.append(item)
     elif isinstance(item,str):
       self.addCode(TextBlock(item))
     else:
       assert 0, "unknown item type (%s) for Module.addCode. item=%s"%(type(item), item)
     return item
+
+  def addCodeBeforeItem(self, item, newItem):
+    """
+    Add specified item to the list of items in the module.
+    Item MUST be a Item (not a string) - can use
+    addText(...)) to add a string.
+    All additions to itemList should use this function.
+
+    Returns item to facilitate one-line create/add patterns
+    """
+    #assert (isinstance(item, Item)) # for debug
+    if isinstance(newItem,Item):
+      item.parent = self
+      itemIdx = -1
+      for idx, selfItem in enumerate(self.itemList):
+        if item == selfItem:
+          itemIdx = idx
+          break
+      if itemIdx != -1:
+        self.itemList.insert(idx, newItem)
+    elif isinstance(newItem,str):
+      self.addCodeBeforeItem(item, TextBlock(newItem))
+    else:
+      assert 0, "unknown item type (%s) for Module.addCodeByIndex. item=%s"%(type(item), item)
+    return item
+
+  def findIndex(self, targetItem):
+    if isinstance(targetItem, Item):
+      return self.itemList.index(targetItem)
+    return -1
 
   def addComment0(self, comment):
     """
@@ -207,6 +247,23 @@ class Module(Item):
     """
     return self.itemList
 
+  def removeItemByIndex(self, index):
+    """
+    Remove item from itemList, remove the last element if
+    exceed length of the itemList
+    Items may be other Modules, TexBlock, or Inst
+    """
+    if index >= len(self.itemList):
+      index = -1
+    del self.itemList[index]
+
+  def removeItemsByName(self, name):
+    """
+    Remove items from itemList
+    Items may be other Modules, TexBlock, or Inst
+    """
+    self.itemList = [ x for x in self.itemList if x.name != name ]
+
   def flatitems(self):
     """
     Return flattened list of items in the Module
@@ -280,21 +337,43 @@ class Inst(Item):
   """
   def __init__(self, *args):
     params = args[0:len(args)-1]
-    comment = args[len(args)-1]
-    assert(isinstance(comment, str))
-    formatting = "%s"
+    self.comment = args[len(args)-1]
+    assert(isinstance(self.comment, str))
+    self.inst   = params[0]
+    self.name   = self.inst
+    self.params = ""
+    if len(params) > 1:
+      self.params = list(params[1:])
+    self.outputInlineAsm = False
+
+  def setInlineAsmPrintMode(self, mode):
+    isinstance(mode, bool)
+    self.outputInlineAsm = mode
+
+  def formatWithComment(self, formatting, comment, *args):
+    instStr     = formatting %(args)
+    return "%-50s // %s\n" % (instStr, comment)
+
+  def copy(self, inst):
+    assert(isinstance(inst, Inst))
+    self.name    = deepcopy(inst.name)
+    self.inst    = deepcopy(inst.inst)
+    self.comment = deepcopy(inst.comment)
+    self.params  = deepcopy(inst.params)
+    self.outputInlineAsm = inst.outputInlineAsm
+
+  def __str__(self):
+    params = [self.inst]
+    params.extend(self.params)
+    formatting = "\"%s" if self.outputInlineAsm else "%s"
     if len(params) > 1:
       formatting += " %s"
     for i in range(0, len(params)-2):
       formatting += ", %s"
-    instStr = formatting % (params)
-    self.text = self.formatWithComment(instStr, comment)
+    if self.outputInlineAsm:
+      formatting += "\\n\\t\""
+    return self.formatWithComment(formatting, self.comment, *params)
 
-  def formatWithComment(self, instStr, comment):
-    return "%-50s // %s\n" % (instStr, comment)
-
-  def __str__(self):
-    return self.text
 class WaitCnt (Module):
   """
   Construct a waitcnt from specified lgkmcnt and vmcnt:
@@ -879,4 +958,3 @@ class MemOpTemplate(OpTemplate):
       self.itemList = []   ## list of  COde Modules
       self.tmpSgpr  = None
       self.tmpVgpr  = None
-

@@ -31,6 +31,10 @@ from .Utils import roundUpToNearestMultiple
 
 from .KernelWriterBetaOnly import KernelWriterBetaOnly
 from .KernelWriterConversion import KernelWriterConversion
+from .KernelWriterActivationEnumHeader import KernelWriterActivationEnumHeader
+from .KernelWriterActivationOnly import KernelWriterActivationOnly
+
+from .Activation import ActivationType
 
 from .CustomKernels import isCustomKernelConfig
 
@@ -915,6 +919,30 @@ class ProblemType(Mapping):
           if anchorDim not in self.state["IndexAssignments%s"%tc]:
               printExit("SetConstStride%s=%s anchorDim=%u is not in IndexAssignments%s"%(tc, sc, anchorDim, tc))
 
+    # Activation
+    if "Activation" in config:
+      typeStr = 'all' if config["Activation"] else 'none'
+      self["ActivationType"] = ActivationType(typeStr)
+    else:
+      self["ActivationType"] = ActivationType('none')
+    if "ActivationHPA" in config:
+      self["ActivationHPA"] = config["ActivationHPA"]
+    else:
+      self["ActivationHPA"] = False
+
+    if self["ActivationType"] != 'none':
+      if ((not self["HighPrecisionAccumulate"]) and self["ActivationHPA"]):
+          printExit("Must enable HighPrecisionAccumulate to use ActivationHPA.")
+      if ((self["HighPrecisionAccumulate"]) and (not self["ActivationHPA"]) and \
+          (self["DestDataType"].isBFloat16() or self["DestDataType"].isInt8())):
+          printWarning("%s only supports ActivationHPA = True if HighPrecisionAccumulate = True. \
+                        ActivationHPA will be set to True automatically."%str(self["DestDataType"]))
+          self["ActivationHPA"] = True
+      if self["ActivationHPA"] and (self["DestDataType"].isSingle() or self["DestDataType"].isDouble()):
+        printWarning("Single and Double does not support ActivationHPA. ActivationHPA will be set to False automatically.")
+        self["ActivationHPA"] = False
+
+
   ################################################################################
    # Function checkIfSupportedGEMMType:
   #   Assures 3 data-types are valid, supported and well-assigned
@@ -1150,6 +1178,14 @@ class ProblemType(Mapping):
     # precision and other
     # name += "_SB" if self["StridedBatched"] else "_GB"
     name += "" if self["StridedBatched"] else "_GB" # legacy
+
+    # Activation Naming
+    if self["ActivationType"] != 'none':
+      if self["ActivationType"] == 'all':
+        name += "_A"
+      else:
+        name += "_%s"%str(self["ActivationType"]).upper()
+    if self["ActivationHPA"]: name += "H"
 
     return name
 
@@ -1679,6 +1715,41 @@ class ProblemSizes:
       s += "  %s" % sizeRange
     return s
 
+################################################################################
+# Activation
+################################################################################
+
+class activationSetting:
+  def __init__(self):
+    self.activationEnum = ""
+class ActivationArgs:
+
+  ########################################
+  def __init__(self, problemType, config):
+    self.settingList = []
+    self.totalProblemSizes = 0
+    if problemType["ActivationType"] == 'none':
+      return
+    if config:
+      for settings in config:
+        actSetting = activationSetting()
+        for dictionary in settings:
+          for sizeTypeKey in dictionary:
+            if sizeTypeKey == "Enum":
+              actSetting.activationEnum = ActivationType(dictionary[sizeTypeKey])
+        if problemType["ActivationType"] == 'all':
+          if (not actSetting.activationEnum):
+            printExit("Must provide an activation enum if Activation is set to True.")
+        else:
+          actSetting.activationEnum = problemType["ActivationType"]
+        self.settingList.append(actSetting)
+        self.totalProblemSizes += 1
+    if (problemType["ActivationType"] == 'all') and (not self.settingList):
+        printExit("Must provide an activation enum in benchmark parameters if Activation is set to True.")
+  def __str__(self):
+    s = "ActivationArgs\n"
+    return s
+
 # kds is class Solution or class Kernel
 # If PackFreeDims=1 then all free dims are packed ; else only 1 free dim/matrix is supported
 # PackBatchDims can pack batches into A or B (has stride==0 requirements for non-packed tensor);
@@ -1770,6 +1841,8 @@ class Solution(collections.abc.Mapping):
   def initHelperKernelObjects(self):
     self.initBetaOnlyKernelObjects()
     self.initConversionKernelObjects()
+    self.initActivationEnumHeaderObjects()
+    self.initActivationOnlyKernelObjects()
 
 
   ########################################
@@ -1793,13 +1866,35 @@ class Solution(collections.abc.Mapping):
       state["ProblemType"] = deepcopy(self["ProblemType"])
       state["KernelLanguage"] = "Source"
       state["_GlobalAccumulation"] = self["_GlobalAccumulation"]
+      state["ActivationFused"] = self["ActivationFused"]
+      state["WavefrontSize"] = self["WavefrontSize"]
       self.conversionKernelObjects.append(KernelWriterConversion(state))
 
+  def initActivationEnumHeaderObjects(self):
+    self.activationEnumHeaderObjects = []
+    if ((self["ProblemType"]["ActivationType"] != 'none') and (self["ProblemType"]["ActivationType"] == 'all')) :
+      state = {}
+      state["ProblemType"] = deepcopy(self["ProblemType"])
+      state["KernelLanguage"] = "Source"
+      self.activationEnumHeaderObjects.append(KernelWriterActivationEnumHeader(state))
+
+  def initActivationOnlyKernelObjects(self):
+    self.activationOnlyKernelObjects = []
+    if (((self["GlobalSplitU"] > 1) and (not self["_GlobalAccumulation"])) or (self["ActivationFused"] == False)) \
+      and (self["ProblemType"]["ActivationType"] != 'none') :
+      state = {}
+      state["ProblemType"] = deepcopy(self["ProblemType"])
+      state["KernelLanguage"] = "Source"
+      state["_GlobalAccumulation"] = self["_GlobalAccumulation"]
+      state["ActivationFused"] = self["ActivationFused"]
+      state["WavefrontSize"] = self["WavefrontSize"]
+      self.activationOnlyKernelObjects.append(KernelWriterActivationOnly(state))
 
   ########################################
   # get Helper Kernels
   def getHelperKernelObjects(self):
-    return self.betaOnlyKernelObjects + self.conversionKernelObjects
+    return self.betaOnlyKernelObjects + self.conversionKernelObjects + \
+           self.activationEnumHeaderObjects + self.activationOnlyKernelObjects
 
 
   ########################################
@@ -2415,12 +2510,12 @@ class Solution(collections.abc.Mapping):
     numBytes = state["ProblemType"]["DataType"].numBytes()
 
     # x2/x4 support for directToLds
-     
+
     # numelements_perlane = 4/numBytes
-    # TN with transposeLDS feature should work as long as state["AssertSummationElementMultiple"] % (numelements_perlane*2) = 0 
+    # TN with transposeLDS feature should work as long as state["AssertSummationElementMultiple"] % (numelements_perlane*2) = 0
     #                                                     state["AssertSummationElementMultiple"] % (numelements_perlane*4) = 0
 
-    #NT 
+    #NT
     # use only for f32 & DGEMM and TLU = 1
     #TN
     # use for all precisions with TransposeLDS=1
@@ -2438,8 +2533,8 @@ class Solution(collections.abc.Mapping):
       return False
 
     # GLVW*BPe only for precision(s) < 4 (bpe)
-    #if (state["ProblemType"]["TLU%c"%tc] == True and numBytes < 4): 
-    if (numBytes < 4): 
+    #if (state["ProblemType"]["TLU%c"%tc] == True and numBytes < 4):
+    if (numBytes < 4):
       if state["GlobalLoadVectorWidth%c"%tc] * numBytes != 4:
         reject(state, "can't use DirectToLds for bpe < 4 and GlobalLoadVectorWidth * numBytes != 4"%tc)
         return False
@@ -3437,10 +3532,10 @@ class Solution(collections.abc.Mapping):
     if state["LocalReadVectorWidth"] == -1:
       if state["EnableMatrixInstruction"] and not state["allowLRVWforTLUandMI"]:
         state["LocalReadVectorWidth"] = state["MIInputPerThread"]
-        # enable less than state["MIInputPerThread"] 
-        # for fp64 this means ds_read_b32 
+        # enable less than state["MIInputPerThread"]
+        # for fp64 this means ds_read_b32
         if ((state["DirectToLdsA"] and state["ProblemType"]["TLUA"]) or \
-            (state["DirectToLdsB"] and state["ProblemType"]["TLUB"])): 
+            (state["DirectToLdsB"] and state["ProblemType"]["TLUB"])):
              state["LocalReadVectorWidth"] = 1 if (state["ProblemType"]["DataType"].numBytes() >= 4) else state["LocalReadVectorWidth"]
       else:
         state["LocalReadVectorWidth"] = state["VectorWidth"]
@@ -3476,7 +3571,7 @@ class Solution(collections.abc.Mapping):
           state["LdsPadA"] = state["VectorWidth"]
         ## turn-off padding for directToLds
         if state["EnableMatrixInstruction"] and state["TransposeLDS"] and state["DirectToLdsA"]:
-          state["LdsPadA"] = 0 
+          state["LdsPadA"] = 0
       assert(state["LdsPadA"] >= 0)
     if state["LdsPadB"] == -1:
       if state["ProblemType"]["TLUB"]:
@@ -3487,7 +3582,7 @@ class Solution(collections.abc.Mapping):
         else:
           state["LdsPadB"] = state["VectorWidth"]
         if state["EnableMatrixInstruction"] and state["TransposeLDS"] and state["DirectToLdsB"]:
-          state["LdsPadB"] = 0 
+          state["LdsPadB"] = 0
       assert(state["LdsPadB"] >= 0)
 
     if (state["UnrollMajorLDSA"] or state["UnrollMajorLDSB"]) and (not state["EnableMatrixInstruction"]):
@@ -3555,7 +3650,7 @@ class Solution(collections.abc.Mapping):
 
     if state["EnableMatrixInstruction"]:
       if state["DirectToLds"] and state["1LDSBuffer"]:
-        reject(state, "1LDSBuffer must be 0 for directToLds") 
+        reject(state, "1LDSBuffer must be 0 for directToLds")
 
     if state["1LDSBuffer"] == -1:
       if ldsNumElementsAB * state["ProblemType"]["DataType"].numBytes() > globalParameters["MaxLDS"]:
@@ -3944,7 +4039,7 @@ class Solution(collections.abc.Mapping):
         #reject(state, "PBC with wide load has insufficient overlap guarantees- try GRVW=1 or adding appropriate Assert*ElementMultiple")
 
 
-           
+
 
     if state["EnableMatrixInstruction"]:
       cont1 = not state["GuaranteeNoPartialB"]
