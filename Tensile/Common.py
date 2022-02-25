@@ -357,7 +357,7 @@ validMatrixInstructions = validMatrixInstructions + validMFMA["_format9"]
 validGEMMTypes = [ ('H','H','H'), ('S','S','S'), ('D','D','D'), ('C','C','C'), ('Z','Z','Z'), \
                    ('H','H','S'), ('H','S','S'), \
                    ('B','B','S'), ('B','S','S'), \
-                   ('I8','I','I'), ('4xi8','I','I')]
+                   ('I8','I','I'), ('4xi8','I','I'), ('I8','I8','I')]
 
 # All HPA types are listed here (HPA=T). The name of the library logic files for these types is:
 # *_TiToTc_BH*.yaml where Ti, Tc, and To are the data types of A/B, C/D, and computation, respectively.

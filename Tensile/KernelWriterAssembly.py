@@ -746,7 +746,9 @@ class KernelWriterAssembly(KernelWriter):
       kernel["LocalWriteUseSgprA"] = False # Requires DirectToLdsA
       kernel["LocalWriteUseSgprB"] = False # Requires DirectToLdsB
 
-    self.useAtomicAdd = self.asmCaps["HasAtomicAdd"] and (kernel["_GlobalAccumulation"] == 'SingleBuffer')
+    # The inst HasAtomicAdd is using is not compatible with int32.
+    self.useAtomicAdd = (self.asmCaps["HasAtomicAdd"] and kernel["ProblemType"]["ComputeDataType"].isSingle()) and \
+                        (kernel["_GlobalAccumulation"] == 'SingleBuffer')
 
     # OptPreLoopVmcnt for PAP:
     # the vmcnt for _ds_store in pre-loop can be optimized to skip the store of prev PKLoop
@@ -4006,7 +4008,7 @@ class KernelWriterAssembly(KernelWriter):
     graIdx = 0
     swapPerpPara = (((tc=="A" and kernel["DirectToVgprA"]) or (tc=="B" and kernel["DirectToVgprB"])) \
                     and (not tP["tlu"]) and tP["nrp"] > 1)
-                   
+
     if not swapPerpPara:
       for perp in range(0, tP["nrp"]):
         for sPerp in range(0, tP["nrpv"]):
@@ -7417,8 +7419,8 @@ class KernelWriterAssembly(KernelWriter):
                   else:
                     padInterval = (self.kernel["WavefrontSize"] if kernel["WaveSeparateGlobalRead%c"%tc] else kernel["NumThreads"]) * self.bpr
                     ldsInc += (ldsInc // padInterval) * kernel["LdsPad%s"%tc] * tP["bpe"]
-                  #print("ldsInc", ldsInc) 
-                  #print("GlobalLoadVectorWidth", kernel["GlobalLoadVectorWidth%c"%tc]) 
+                  #print("ldsInc", ldsInc)
+                  #print("GlobalLoadVectorWidth", kernel["GlobalLoadVectorWidth%c"%tc])
                   #print("bpr", self.bpr)
                   if kernel["UseInstOffsetForGRO"]:
                     # buffer_load only support 12 bit instruction offset
@@ -8563,7 +8565,7 @@ class KernelWriterAssembly(KernelWriter):
               if self.db["ForceInputValue%s"%tc]:
                 localWriteCode.addInst("v_mov_b32", vgpr("G2L%s+%u"%(tc, g2lIdx)), self.db["ForceValue%s"%tc], "ForceInputValue")
               if kernel["ProblemType"]["Fp16AltImpl"]:
-                numIters = 1 if blockWidth <= 1 else blockWidth 
+                numIters = 1 if blockWidth <= 1 else blockWidth
                 for iter in range(0, numIters):
                    vgprsrc = vgpr("G2L%s+%u"%(tc, g2lIdx+iter))
                    vgprsrc += " src0_sel:WORD_1"
@@ -11164,7 +11166,10 @@ class KernelWriterAssembly(KernelWriter):
         rps = kernel["ProblemType"]["DestDataType"].numRegisters()
         kStr += self.chooseGlobalWrite(useBuffer, bps, sumIdx*rps, rpv, \
                   addr0, addr1, addrCalc.globalOffset, ntStr)
-
+      elif kernel["ProblemType"]["DestDataType"].isInt8():
+        if kernel["ProblemType"]["HighPrecisionAccumulate"]:
+          kStr += self.chooseGlobalWrite(useBuffer, bps, sumIdx, rpv, \
+                    addr0, addr1, addrCalc.globalOffset, ntStr)
     return kStr
 
   ##############################################################################
@@ -11303,6 +11308,11 @@ class KernelWriterAssembly(KernelWriter):
       kStr += self.chooseGlobalRead(useBuffer, bps, data, \
                 addr0, addr1, soffset=0, offset=addrCalc.globalOffset, \
                 extraFields=extraStr, hi16=vc0 % 2,
+                comment="load C for beta calc").toStr()
+    elif kernel["ProblemType"]["DestDataType"].isInt8():
+      kStr += self.chooseGlobalRead(useBuffer, bps, data, \
+                addr0, addr1, soffset=0, offset=addrCalc.globalOffset, \
+                extraFields=extraStr, hi16=vc0 % 4,
                 comment="load C for beta calc").toStr()
     elif kernel["ProblemType"]["DestDataType"].isBFloat16() or \
          kernel["ProblemType"]["DestDataType"].isInt32() or \
@@ -12015,10 +12025,23 @@ class KernelWriterAssembly(KernelWriter):
                   kStr += inst("v_lshlrev_b32", vgpr(tmpVgpr), "16", vgpr(dataCExternal), "convert bf16 to fp32" )
                 kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%sumIdxV), vgpr(tmpVgpr), sgpr("Beta"), \
                     "finalSum = sum*alpha + C*beta")
-
             elif kernel["ProblemType"]["DestDataType"].isSingle():
               kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%sumIdxV), vgpr(dataV+0), sgpr("Beta"), \
                   "finalSum = sum*alpha + C*beta")
+
+            elif kernel["ProblemType"]["DestDataType"].isInt8():
+              if kernel["ProblemType"]["HighPrecisionAccumulate"]:
+                assert (gwvw % 4 == 0)
+                if (vi%4) != 3:
+                  tmpC = tmpVgpr
+                  kStr += inst("v_bfe_i32", vgpr(tmpC), vgpr(dataV+0), (vi * 8), 8, "int8 to int32")
+                else:
+                  tmpC = dataV+0
+                  kStr += inst("v_ashrrev_i32_e32", vgpr(dataV+0), 24, vgpr(dataV+0), "int8 to int32")
+                kStr += inst("v_mul_lo_u32", vgpr(tmpC), sgpr("Beta"), vgpr(tmpC), \
+                    "C = C*beta")
+                kStr += inst("_v_add_u32", vgpr("ValuC+%u"%sumIdxV), vgpr(tmpC), vgpr("ValuC+%u"%sumIdxV), \
+                    "finalSum = sum*alpha + C*beta")
 
             elif kernel["ProblemType"]["DestDataType"].isInt32():
               # assume we will need to replace v_mac_f32 with v_add_u32 and s_mul_lo_i32
@@ -12084,6 +12107,8 @@ class KernelWriterAssembly(KernelWriter):
                 # c.imag += a.imag * b.real
                 BetaCodeMod.addCode("v_fma_f64 %s, %s, %s, %s%s" % (vgpr("L2GC+%u"%(vregIdx+2),2), vgpr("G2LC+%u"%(vregIdx+2),2), sgpr("Beta+0",2), vgpr("L2GC+%u"%(vregIdx+2),2), self.endLine))
 
+        SaturateTypeInt8 = self.SaturateCastType.NORMAL
+
         # pack stores, beta and non-beta reach here:
         if kernel["ProblemType"]["HighPrecisionAccumulate"] and (kernel["_GlobalAccumulation"] != 'MultipleBuffer'):
           for vi in range(0, gwvw):
@@ -12105,6 +12130,21 @@ class KernelWriterAssembly(KernelWriter):
               elif vi%2 == 1:
                 d = ss.elementSumIdx[elementIdx] + vi//2
                 kStr += inst("v_and_or_b32", vgpr(d), vgpr("ValuC+%u"%sumIdxV), vgpr(vgprBf16Mask), vgpr("ValuC+%u"%(sumIdxV-1)), "pack two bf16 to dword")
+
+            elif kernel["ProblemType"]["DestDataType"].isInt8():
+              assert (gwvw % 4 == 0)
+              if vi%4 == 0:
+                d = ss.elementSumIdx[elementIdx] + vi//4
+                for i in range(0, 4):
+                    kStr += self.saturateCastInt(sumIdxV+i, tmpVgpr, tmpS01, -128, 127, type=SaturateTypeInt8, initGpr=(i%4 == 0))
+                kStr += inst("v_lshlrev_b16", vgpr("ValuC+%u"%(sumIdxV+1)), 8, vgpr("ValuC+%u"%(sumIdxV+1)), "" )
+                kStr += inst("v_lshlrev_b16", vgpr("ValuC+%u"%(sumIdxV+3)), 8, vgpr("ValuC+%u"%(sumIdxV+3)), "" )
+                int8CombineStr = vgpr("ValuC+%u"%(sumIdxV+1)) + " dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD"
+                kStr += inst("v_or_b32", vgpr("ValuC+%u"%(sumIdxV)), vgpr("ValuC+%u"%(sumIdxV)), int8CombineStr, "" )
+                int8CombineStr = vgpr("ValuC+%u"%(sumIdxV+3)) + " dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD"
+                kStr += inst("v_or_b32", vgpr("ValuC+%u"%(sumIdxV+1)), vgpr("ValuC+%u"%(sumIdxV+2)), int8CombineStr, "" )
+                int8CombineStr = vgpr("ValuC+%u"%(sumIdxV+1)) + " dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD"
+                kStr += inst("v_or_b32", vgpr(d), vgpr("ValuC+%u"%(sumIdxV)), int8CombineStr, "" )
 
         if not kernel["StoreRemapVectorWidth"]:
           tmpStoreCode = self.addStore(kernel, ss, addrCalc, sumIdx, tmpS01, edge)
@@ -12774,7 +12814,7 @@ class KernelWriterAssembly(KernelWriter):
       if V3Iterations > 0:
         numV3LineOffset = self.StoreCInUnrollAddrIncVlineOffset3
         # subtract V1,V2 offsets (which is already added)
-        numV3LineOffset -= ((V2Iterations//V1Iterations - 1) * numLinesV1) + ((V3Iterations//V2Iterations - 1) * numLinesV2) 
+        numV3LineOffset -= ((V2Iterations//V1Iterations - 1) * numLinesV1) + ((V3Iterations//V2Iterations - 1) * numLinesV2)
         mulValue3 = numV3LineOffset * bpe
         sgprDst = CorD + "AddrIncV3"
         # Need to split into 2 instructions (movk and mul)
@@ -14029,4 +14069,37 @@ class KernelWriterAssembly(KernelWriter):
       kStr += inst("v_mov_b32", vgpr(tmp), sgprStore, "debug dump sgpr store")
       kStr += self.dump(tmp)
       self.vgprPool.checkIn(vgpr(tmp))
+    return kStr
+
+  ########################################
+  # Saturate Cast Integer
+  ########################################
+
+  class SaturateCastType(Enum):
+    NORMAL = 1
+    DO_NOTHING = 2
+    UPPER = 3
+    LOWER = 4
+
+  def saturateCastInt(self, sumIdxV, tmpVgpr, tmpSgpr, lowerBound, upperBound, type=SaturateCastType.NORMAL, initGpr=True):
+    # SaturateCastType = 0, normal case
+    # SaturateCastType = 1, do nothing
+    # SaturateCastType = 2, upperbound only
+    # SaturateCastType = 3, lowerbound only
+    kStr = ""
+    if type == self.SaturateCastType.NORMAL:
+      tmpLowerBound = tmpSgpr
+      tmpUpperBound = tmpVgpr
+      if initGpr:
+        lowerBoundHex = hex(lowerBound)
+        upperBoundHex = hex(upperBound)
+        kStr += inst("s_movk_i32", sgpr(tmpLowerBound), lowerBoundHex, "%d"%lowerBound )
+        kStr += inst("v_mov_b32", vgpr(tmpUpperBound), upperBoundHex, "%d"%upperBound )
+      kStr += inst("v_med3_i32", vgpr("ValuC+%u"%(sumIdxV)), vgpr("ValuC+%u"%(sumIdxV)), sgpr(tmpLowerBound), vgpr(tmpUpperBound), "x= min(%d, max(%d, x))"%(upperBound, lowerBound) )
+    elif type == self.SaturateCastType.DO_NOTHING:
+      pass
+    elif type == self.SaturateCastType.UPPER:
+      kStr += inst("v_min_i32", vgpr("ValuC+%u"%(sumIdxV)), upperBound, vgpr("ValuC+%u"%(sumIdxV)), "x = min(%d, x)"%upperBound )
+    elif type == self.SaturateCastType.LOWER:
+      kStr += inst("v_max_i32", vgpr("ValuC+%u"%(sumIdxV)), lowerBound, vgpr("ValuC+%u"%(sumIdxV)), "x = max(%d, x)"%lowerBound )
     return kStr

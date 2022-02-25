@@ -245,8 +245,13 @@ class KernelWriterConversion(KernelWriterBase):
     kStr += "  else%s" % self.endLine
     kStr += "    accum = (((" + self.datatype + ")alpha) * accum + ((" + self.datatype + ")beta) * ((" + self.datatype + ")C[idxC]));" + self.endLine
 
+    if self.state["ProblemType"]["DestDataType"].isInt8() and self.state["ProblemType"]["HighPrecisionAccumulate"]:
+      rvalueStr = "min(127, max(-128, accum))"
+    else:
+      rvalueStr = "accum"
+
     typeStr = self.state["ProblemType"]["DestDataType"].toDevice(self.language)
-    kStr += "  D[idxD] = (%s)accum;%s" % (typeStr, self.endLine)
+    kStr += "  D[idxD] = (%s)%s;%s" % (typeStr, rvalueStr, self.endLine)
 
     ########################################
     # end

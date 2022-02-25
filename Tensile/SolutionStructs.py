@@ -864,6 +864,11 @@ class ProblemType(Mapping):
       printWarning("Inconsistent DataTypes: DataType == bf16, DestType == bf16, ComputeDataType == bf16, but HPA == True (BBB+HPA, no such a type); Converting BBB+HPA to BBS_BH by setting compute data type to f32.")
       self["ComputeDataType"] = DataType('s')
 
+    # Modifying ComputeDataType for I8I8I_BH: if (I8I8I8+HPA), convert it to I8I8I_BH by setting ComputeDataType to i.
+    if self["ComputeDataType"].isInt8() and DataType(config["DataType"]).isInt8() and self["HighPrecisionAccumulate"]:
+      print2("DataType == i8 and HPA == True; setting compute data type to int32")
+      self["ComputeDataType"] = DataType('i')
+
     self.convolution = None
     if self["OperationType"] == "GEMM":
       self.checkIfSupportedGEMMType()
