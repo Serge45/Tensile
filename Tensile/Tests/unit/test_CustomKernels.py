@@ -46,7 +46,6 @@ ProblemType:
     TransposeB: False
     UseBeta: True
     Batched: True
-LoopDoWhile: False
 WorkGroupMapping:  1
 ThreadTile: [ 8, 8 ]
 WorkGroup: [  8, 16,  1 ]

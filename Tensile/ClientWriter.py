@@ -610,9 +610,6 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
     kernelSerialNaming = Solution.getSerialNaming(kernels)
     solutionMinNaming = Solution.getMinNaming(solutions)
     kernelMinNaming = Solution.getMinNaming(kernels)
-    solutionWriter = SolutionWriter( \
-        solutionMinNaming, solutionSerialNaming, \
-        kernelMinNaming, kernelSerialNaming)
   """
 
   if forBenchmark:

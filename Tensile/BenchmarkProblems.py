@@ -36,9 +36,7 @@ from .ClientWriter import runClient, writeClientConfig, writeClientConfigIni
 from .Common import globalParameters, HR, pushWorkingPath, popWorkingPath, print1, print2, \
         printExit, printWarning, ensurePath, startTime, validParameters
 from .KernelWriterAssembly import KernelWriterAssembly
-from .KernelWriterSource import KernelWriterSource
 from .SolutionStructs import Solution, ProblemType, ProblemSizes
-from .SolutionWriter import SolutionWriter
 from .TensileCreateLibrary import copyStaticFiles, writeSolutionsAndKernels
 from .CustomKernels import getCustomKernelConfig
 
@@ -141,21 +139,16 @@ def writeBenchmarkFiles(stepBaseDir, solutions, problemSizes, \
                 kernelHelperOjbs.append(ko)
                 kernelHelperNames.add(kname)
 
-    solutionSerialNaming = Solution.getSerialNaming(solutions)
     kernelSerialNaming = Solution.getSerialNaming(kernels)
-    solutionMinNaming = Solution.getMinNaming(solutions)
     kernelMinNaming = Solution.getMinNaming(kernels)
-    solutionWriter = SolutionWriter(solutionMinNaming, \
-            solutionSerialNaming, kernelMinNaming, kernelSerialNaming)
-    kernelWriterSource = KernelWriterSource(kernelMinNaming, kernelSerialNaming)
     kernelWriterAssembly = KernelWriterAssembly(kernelMinNaming, kernelSerialNaming)
 
     # write solution, kernels and CMake
     problemType = solutions[0]["ProblemType"]
     codeObjectFiles = writeSolutionsAndKernels( \
             globalParameters["WorkingPath"], globalParameters["CxxCompiler"], \
-            [problemType], solutions, kernels, kernelHelperOjbs, solutionWriter, \
-            kernelWriterSource, kernelWriterAssembly, errorTolerant=True )
+            [problemType], solutions, kernels, kernelHelperOjbs, \
+            kernelWriterAssembly, errorTolerant=True )
     # ^ this is where solutions is mutated
 
     newLibraryDir = ensurePath(os.path.join(globalParameters["WorkingPath"], 'library'))

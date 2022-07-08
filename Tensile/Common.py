@@ -366,7 +366,6 @@ validGEMMTypes = [ ('H','H','H'), ('S','S','S'), ('D','D','D'), ('C','C','C'), (
 HPATypes = [ ('H','S','S'), ('H','H','S'), ('B','B','S'), ('B','S','S'), ('I8','I','I'), ('4xi8','I','I')]
 
 validParameters = {
-    "LoopDoWhile":                [ False, True ], # Source. True=DoWhile, False=For loop
     "LoopTail":                   [ False, True ], # tail loop handles non multiples of unrolled summation loop
 
     # threads load elements from global into registers, then write from registers to LDS
@@ -1188,7 +1187,7 @@ validParameters = {
     # if assembly, ISA will determine architecture
     # if source, Runtime will determine language
     # later on, we'll relax this to inner kernel languages and outer kernel languages, such as inline asm embedded in ocl or in llvm
-    "KernelLanguage":             [ "Assembly", "Source" ],
+    "KernelLanguage":             [ "Assembly" ],
     "ISA":                        validISA,       # arch for assembly kernels
 
     # Replaces assembly kernels if they are found in the directory Tensile/Tensile/ReplacementKernels
@@ -1224,13 +1223,12 @@ validParameters = {
 
 # same parameter for all solution b/c depends only on compiler
 defaultBenchmarkCommonParameters = [
-    {"LoopDoWhile":               [ False ] },
     {"LoopTail":                  [ True ] },
     {"EdgeType":                  [ "Branch" ] },
     {"InnerUnroll":               [ 1 ] },
     {"LocalDotLayout":            [ 1 ] },
     {"AggressivePerfMode":        [ 1 ] },
-    {"KernelLanguage":            [ "Source" ] },
+    {"KernelLanguage":            [ "Assembly" ] },
     {"LdsPadA":                   [ 0 ] },
     {"LdsPadB":                   [ 0 ] },
     {"LdsBlockSizePerPad":        [ 0 ] },

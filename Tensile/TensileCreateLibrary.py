@@ -33,10 +33,8 @@ from .Common import globalParameters, HR, print1, print2, printExit, ensurePath,
                     CHeader, CMakeHeader, assignGlobalParameters, \
                     listToInitializer, gfxName, architectureMap
 from .KernelWriterAssembly import KernelWriterAssembly
-from .KernelWriterSource import KernelWriterSource
 from .SolutionLibrary import MasterSolutionLibrary
 from .SolutionStructs import Solution
-from .SolutionWriter import SolutionWriter
 
 import argparse
 import collections
@@ -51,13 +49,13 @@ import time
 from copy import deepcopy
 
 ################################################################################
-def processKernelSource(kernel, kernelWriterSource, kernelWriterAssembly):
+def processKernelSource(kernel, kernelWriterAssembly):
     """
     Generate source for a single kernel.
     Returns (error, source, header, kernelName).
     """
     try:
-        kernelWriter = kernelWriterSource if kernel["KernelLanguage"] == "Source" else kernelWriterAssembly
+        kernelWriter = kernelWriterAssembly
         # get kernel name
         kernelName = kernelWriter.getKernelFileBase(kernel)
         (err, src) = kernelWriter.getSourceFileString(kernel)
@@ -438,7 +436,7 @@ def buildKernelSourceAndHeaderFiles(results, outputPath, kernelsWithBuildErrs, \
 # Write Solutions and Kernels for BenchmarkClient or LibraryClient
 ################################################################################
 def writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions, kernels, kernelHelperObjs, \
-    solutionWriter, kernelWriterSource, kernelWriterAssembly, errorTolerant=False):
+    kernelWriterAssembly, errorTolerant=False):
   start = time.time()
 
   codeObjectFiles = []
@@ -481,7 +479,7 @@ def writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions, k
 
   prepAsm(kernelWriterAssembly)
 
-  kIter = zip(kernels, itertools.repeat(kernelWriterSource), itertools.repeat(kernelWriterAssembly))
+  kIter = zip(kernels, itertools.repeat(kernelWriterAssembly))
   results = Common.ParallelMap(processKernelSource, kIter, "Generating kernels", method=lambda x: x.starmap, maxTasksPerChild=1)
 
   removeKernels = []
@@ -505,7 +503,7 @@ def writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions, k
   kernelsToBuild = list(kernels)
   if errorTolerant:
       def success(kernel):
-          writer = kernelWriterAssembly if kernel['KernelLanguage'] == 'Assembly' else kernelWriterSource
+          writer = kernelWriterAssembly
           kernelName = writer.getKernelName(kernel)
           return kernelName not in kernelsWithBuildErrs
       kernelsToBuild = list(filter(success, kernelsToBuild))
@@ -987,16 +985,13 @@ def writeSolutionCall(solutionName, problemType):
 def getSolutionAndKernelWriters(solutions, kernels):
 
   # if any kernels are assembly, append every ISA supported
-  solutionSerialNaming = Solution.getSerialNaming(solutions)
   kernelSerialNaming   = Solution.getSerialNaming(kernels)
 
   solutionMinNaming    = Solution.getMinNaming(solutions)
   kernelMinNaming      = Solution.getMinNaming(kernels)
-  solutionWriter       = SolutionWriter(solutionMinNaming, solutionSerialNaming, kernelMinNaming, kernelSerialNaming)
-  kernelWriterSource   = KernelWriterSource(kernelMinNaming, kernelSerialNaming)
   kernelWriterAssembly = KernelWriterAssembly(kernelMinNaming, kernelSerialNaming)
 
-  return (solutionWriter, kernelWriterSource, kernelWriterAssembly, kernelMinNaming, solutionMinNaming)
+  return (kernelWriterAssembly, kernelMinNaming, solutionMinNaming)
 
 ################################################################################
 # copy static cpp files and headers
@@ -1016,7 +1011,7 @@ def copyStaticFiles(outputPath=None):
 
   return libraryStaticFiles
 
-def buildObjectFileNames(solutionWriter, kernelWriterSource, kernelWriterAssembly, solutions, kernels, kernelHelperObjs):
+def buildObjectFileNames(kernelWriterAssembly, kernels, kernelHelperObjs):
 
   # Build lists of output object names
   sourceKernelNames = []
@@ -1029,13 +1024,9 @@ def buildObjectFileNames(solutionWriter, kernelWriterSource, kernelWriterAssembl
   sourceLibFiles = []
   asmLibFiles = []
 
-  sourceKernels = list([k for k in kernels if k['KernelLanguage'] == 'Source'])
   asmKernels = list([k for k in kernels if k['KernelLanguage'] == 'Assembly'])
 
   # Build a list of kernel object names.
-  for kernel in sourceKernels:
-    sourceKernelNames += [kernelWriterSource.getKernelFileBase(kernel)]
-
   for kernel in asmKernels:
     asmKernelNames += [kernelWriterAssembly.getKernelFileBase(kernel)]
 
@@ -1286,14 +1277,14 @@ def writeBenchmarkClientFiles(libraryWorkingPath, tensileSourcePath, solutions, 
       copyStaticFiles(libraryWorkingPath)
 
   kernels, kernelsBetaOnly, _ = generateKernelObjectsFromSolutions(solutions)
-  solutionWriter, kernelWriterSource, kernelWriterAssembly, \
+  kernelWriterAssembly, \
     kernelMinNaming, _ = getSolutionAndKernelWriters(solutions, kernels)
 
   # write solution, kernels and CMake
   problemType = solutions[0]["ProblemType"]
   codeObjectFiles = writeSolutionsAndKernels( \
     libraryWorkingPath, cxxCompiler, [problemType], solutions, kernels, kernelsBetaOnly, \
-    solutionWriter, kernelWriterSource, kernelWriterAssembly, errorTolerant=True )
+    kernelWriterAssembly, errorTolerant=True )
 
   newLibraryDir = ensurePath(os.path.join(libraryWorkingPath, 'library'))
   newLibraryFile = os.path.join(newLibraryDir, "TensileLibrary.yaml")
@@ -1474,8 +1465,7 @@ def TensileCreateLibrary():
   kernels, kernelHelperObjs, _ = generateKernelObjectsFromSolutions(solutions)
 
   # if any kernels are assembly, append every ISA supported
-  solutionWriter, kernelWriterSource, kernelWriterAssembly, \
-    kernelMinNaming, _ = getSolutionAndKernelWriters(solutions, kernels)
+  kernelWriterAssembly, kernelMinNaming, _ = getSolutionAndKernelWriters(solutions, kernels)
 
   staticFiles = copyStaticFiles(outputPath)
 
@@ -1484,8 +1474,7 @@ def TensileCreateLibrary():
    sourceKernelFiles,
    asmKernelFiles,
    sourceLibFiles,
-   asmLibFiles) = buildObjectFileNames(solutionWriter, kernelWriterSource, \
-    kernelWriterAssembly, solutions, kernels, kernelHelperObjs)
+   asmLibFiles) = buildObjectFileNames(kernelWriterAssembly, solutions, kernels, kernelHelperObjs)
 
   (_,
    _,
@@ -1521,7 +1510,7 @@ def TensileCreateLibrary():
   problemTypes = list(logicData.keys())
 
   codeObjectFiles = writeSolutionsAndKernels(outputPath, CxxCompiler, problemTypes, solutions,
-                                             kernels, kernelHelperObjs, solutionWriter, kernelWriterSource, kernelWriterAssembly)
+                                             kernels, kernelHelperObjs, kernelWriterAssembly)
 
   bothLibSet = set(sourceLibPaths + asmLibPaths)
   setA = set( map( os.path.normcase, set(codeObjectFiles) ) )
