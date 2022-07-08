@@ -1186,17 +1186,7 @@ class KernelWriterAssembly(KernelWriter):
       self.numVgprValuAPerBlock = kernel["MIWaveTileA"] * kernel["MIInputPerThread"] * tPA["bpe"] // self.bpr
       self.numVgprValuBPerBlock = kernel["MIWaveTileB"] * kernel["MIInputPerThread"] * tPB["bpe"] // self.bpr
     else:
-      self.numVgprValuAPerBlock = kernel["ThreadTileA"] * tPA["bpe"] // self.bpr
-      self.numVgprValuBPerBlock = kernel["ThreadTileB"] * tPB["bpe"] // self.bpr
-      if kernel["ProblemType"]["DataType"].isBFloat16():
-        if kernel["ProblemType"]["HighPrecisionAccumulate"]:
-          self.numVgprValuAPerBlock = kernel["ThreadTileA"]
-          self.numVgprValuBPerBlock = kernel["ThreadTileB"]
-      elif kernel["ProblemType"]["DataType"].isInt8():
-        if kernel["ProblemType"]["HighPrecisionAccumulate"]:
-          if kernel["LocalDotLayout"] == 1:
-            self.numVgprValuAPerBlock = kernel["ThreadTileA"]
-            self.numVgprValuBPerBlock = kernel["ThreadTileB"]
+      printExit("TensileLite does not support non MFMA.")
 
     # change numVgprValuAPerBlock to 0 for A if DirectToVgpr is enabled
     if kernel["DirectToVgprA"]:
@@ -1889,8 +1879,7 @@ class KernelWriterAssembly(KernelWriter):
         if self.allowLRVWforTLUandMI:
           numB //= self.lrvwB
     else:
-      numB = kernel["InnerUnroll"]*(kernel["ThreadTile1"] // kernel["VectorWidth"]) // tPB["localReadInstruction"].numOffsets
-      numA = kernel["InnerUnroll"]*(kernel["ThreadTile0"] // kernel["VectorWidth"]) // tPA["localReadInstruction"].numOffsets
+      printExit("TensileLite does not support non MFMA.")
     self.numReadsPerIterA = numA
     self.numReadsPerIterB = numB
     self.localReadDoCntA   = 0
@@ -1957,44 +1946,6 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   def functionPrefix(self, kernel):
     return ""
-
-
-  def defineMACs(self, kernel, m, innerUnroll):
-    component = Component.MAC.find(self)
-    if component:
-      return component(self, m, innerUnroll)
-    printExit("Assembly doesn't support %s" % kernel["ProblemType"]["DataType"])
-
-
-  def defineMACMacro(self, kernel, innerUnroll, useMacro):
-    """
-    Defines a macro that performs one set of multiply-accumulate operations.
-    """
-
-    kStr = ""
-    # Create a macro version that processes just one U iter
-    # (used in tail loop in some cases)
-    oneIUI = kernel["InnerUnroll"] > 1 and innerUnroll==1
-
-    ########################################
-    # MACs
-    kStr += self.comment3("%dx%d thread-tile" \
-        % (kernel["ThreadTile0"], kernel["ThreadTile1"]) )
-    PLR = kernel["PrefetchLocalRead"] if kernel["PrefetchLocalRead"] < kernel["LoopIters"] else kernel["LoopIters"] - 1
-    for m in range(0, 1+PLR):
-      # Create a special macro that does one K iter if needed:
-      ext = "_OneIUI" if oneIUI else ""
-      if useMacro:
-        kStr += ".macro MAC_%ux%u_X%u%s" \
-            % (kernel["ThreadTile0"], kernel["ThreadTile1"], m, ext)
-      kStr += self.endLine
-      kStr += self.defineMACs(kernel, m, innerUnroll)
-      if useMacro:
-        kStr += ".endm%s" % self.endLine
-
-    return kStr
-
-
 
   def defineVALUMacros(self):
     """
@@ -2846,11 +2797,6 @@ class KernelWriterAssembly(KernelWriter):
     kStr += inst("v_mul_lo_u32",  "v[\\vRemainder]", "v[\\vQuotient]", "v[\\vDivisor]", "" )
     kStr += inst("_v_sub_co_u32",     "v[\\vRemainder]", self.vcc,            "v[\\vDividend]", "v[\\vRemainder]", "final result" )
     kStr += ".endm%s" % self.endLine
-
-    if not kernel["EnableMatrixInstruction"]:
-      kStr += self.defineMACMacro(kernel, kernel["InnerUnroll"], True)
-      if kernel["InnerUnroll"] > 1:
-        kStr += self.defineMACMacro(kernel, 1, True) # define OneIter case
 
     if self.overflowedResources:
       if self.overflowedResources == 1:
@@ -6532,157 +6478,6 @@ class KernelWriterAssembly(KernelWriter):
     mfmaMod.addCode(imod)
 
     return mfmaMod
-
-  def removeExtraUnroll(self, kernel):
-    kStr = ""
-
-    tmpSgpr = self.getTmpSgpr(1).idx()
-    loopCounterName = "TailLoopCounter" if self.prefetchAcrossPersistent0 else self.loopCounterName(kernel, self.unrollIdx)
-    elementPerReg = self.bpr//self.bpeAB
-    skipLabel = 'SkipCleanDirtyUnroll'
-
-    kStr += inst("s_cmp_ge_u32", sgpr(loopCounterName), elementPerReg, "check any dirty unroll")
-    kStr += inst("s_cbranch_scc1", skipLabel, "skip clean when no dirty unroll")
-    kStr += self.endLine
-
-    kStr += inst("s_and_b32", sgpr(tmpSgpr), sgpr(loopCounterName), elementPerReg-1, "how much element in vgpr")
-    kStr += inst("s_sub_i32", sgpr(tmpSgpr), elementPerReg, sgpr(tmpSgpr), "how much dirty element need to be remove")
-    kStr += inst("s_lshl_b32", sgpr(tmpSgpr), sgpr(tmpSgpr), hex(log2(self.bpeAB*8)), "how much dirty bits need to be remove")
-    kStr += self.endLine
-
-    for blockA in range(0, kernel["ThreadTile0"]//elementPerReg):
-      for iui in range(0, kernel["InnerUnroll"]):
-        aStr = f'ValuA_X0_I{iui}+{blockA}'
-        kStr += inst("v_lshlrev_b32", vgpr(aStr), sgpr(tmpSgpr), vgpr(aStr), "clean dirty unroll")
-    kStr += self.endLine
-
-    for blockB in range(0, kernel["ThreadTile1"]//elementPerReg):
-      for iui in range(0, kernel["InnerUnroll"]):
-        bStr = f'ValuB_X0_I{iui}+{blockB}'
-        kStr += inst("v_lshlrev_b32", vgpr(bStr), sgpr(tmpSgpr), vgpr(bStr), "clean dirty unroll")
-    kStr += self.endLine
-
-    kStr += inst(skipLabel+':', "end of clean dirty unroll")
-    kStr += self.endLine
-
-    return kStr
-
-  ##############################################################################
-  # MAC Iteration
-  ##############################################################################
-  def macIter(self, kernel, bufferIdx, iuiCount, useMacro, isTail=False):
-    imod = Code.Module("macIter_X%u_I%u"%(bufferIdx, iuiCount))
-
-    if not self.do["MAC"]: return imod
-
-    if isTail and (kernel["LocalDotLayout"] > 1) and (kernel["InnerUnroll"] == kernel["LocalDotLayout"]) \
-        and ((kernel["AssertSummationElementMultiple"] % kernel["LocalDotLayout"]) != 0):
-      imod.addText(self.removeExtraUnroll(kernel))
-
-    if kernel["ProblemType"]["DataType"].isHalf():
-      imod.addInst(".align32 8, 0xbf800001", "align v_pk_fma")   # Align v_pk_fma instructions used in MAC_ blocks
-
-    if kernel["InnerUnroll"] > 1 and iuiCount==1:
-      # This it tail-loop case where we just want one IUI,
-      imod.addText("MAC_%ux%u_X%u_OneIUI" % (kernel["ThreadTile0"],kernel["ThreadTile1"], bufferIdx))
-    else:
-      if useMacro:
-        imod.addText("MAC_%ux%u_X%u" % (kernel["ThreadTile0"],kernel["ThreadTile1"], bufferIdx))
-      else:
-        # Generate MAC calls inline
-        imod.addText(self.defineMACs(kernel, bufferIdx, kernel["InnerUnroll"]))
-
-    return imod
-
-  ##############################################################################
-  # MAC Iteration -alternate version
-  ##############################################################################
-  def macCode(self, kernel, bufferIdx, iuiCount):
-    if not self.do["MAC"]: return ""
-    imod = Code.Module("macIter_X%u_I%u"%(bufferIdx, iuiCount))
-
-    if kernel["ProblemType"]["DataType"].isHalf():
-      imod.addInst(".align32 8, 0xbf800001", "align v_pk_fma")   # Align v_pk_fma instructions used in MAC_ blocks
-
-    doOnce = False
-    beAggressive = kernel["AggressivePerfMode"]
-    macIdx = 0
-
-    # half precision
-    if kernel["ProblemType"]["DataType"].isHalf():
-      for blockB in range(0, kernel["ThreadTile1"]//2):
-        for blockA in range(0, kernel["ThreadTile0"]//2):
-          imod.addCode(Code.MacInst(kernel,blockA,blockB,bufferIdx,iuiCount))
-          if beAggressive and not doOnce:
-            imod.addInst("s_setprio ","1","Raise priority while processing macs")
-            doOnce = True
-
-    # bf16 precision
-    elif kernel["ProblemType"]["DataType"].isBFloat16():
-      for blockB in range(0, kernel["ThreadTile1"]//2):
-        for blockA in range(0, kernel["ThreadTile0"]//2):
-          imod.addCode(Code.MacInst(kernel,blockA,blockB,bufferIdx,iuiCount))
-          if beAggressive and not doOnce:
-            imod.addInst("s_setprio ","1","Raise priority while processing macs")
-            doOnce = True
-
-    # integer i8x4
-    elif kernel["ProblemType"]["DataType"].isInt8x4():
-      for blockB in range(0, kernel["ThreadTile1"]):
-        for blockA in range(0, kernel["ThreadTile0"]):
-          imod.addCode(Code.MacInst(kernel,blockA,blockB,bufferIdx,iuiCount))
-          if beAggressive and not doOnce:
-            imod.addInst("s_setprio ","1","Raise priority while processing macs")
-            doOnce = True
-
-    # single precision
-    elif kernel["ProblemType"]["DataType"].isSingle():
-      for blockB in range(0, kernel["ThreadTile1"]):
-        for blockA in range(0, kernel["ThreadTile0"]):
-          imod.addCode(Code.MacInst(kernel,blockA,blockB,bufferIdx,iuiCount))
-          if beAggressive and not doOnce:
-            imod.addInst("s_setprio ","1","Raise priority while processing macs")
-            doOnce = True
-          if macIdx == kernel["PerformanceWaitLocation"]:
-            imod.addCode(Code.WaitCnt(self.version, kernel["PerformanceWaitCount"],"extra wait for performance"))
-          if macIdx == kernel["PerformanceSyncLocation"]:
-            imod.addInst("s_barrier ","extra barrier for performance")
-          macIdx += 1
-
-    # double precision
-    elif kernel["ProblemType"]["DataType"].isDouble():
-      for blockB in range(0, kernel["ThreadTile1"]):
-        for blockA in range(0, kernel["ThreadTile0"]):
-          imod.addCode(Code.MacInst(kernel,blockA,blockB,bufferIdx,iuiCount))
-          if beAggressive and not doOnce:
-            imod.addInst("s_setprio ","1","Raise priority while processing macs")
-            doOnce = True
-
-    # single precision complex
-    elif kernel["ProblemType"]["DataType"].isSingleComplex():
-      for blockB in range(0, kernel["ThreadTile1"]):
-        for blockA in range(0, kernel["ThreadTile0"]):
-          imod.addCode(Code.MacInst(kernel,blockA,blockB,bufferIdx,iuiCount))
-          if beAggressive and not doOnce:
-            imod.addInst("s_setprio ","1","Raise priority while processing macs")
-            doOnce = True
-
-    # double precision complex
-    elif kernel["ProblemType"]["DataType"].isDoubleComplex():
-      for blockB in range(0, kernel["ThreadTile1"]):
-        for blockA in range(0, kernel["ThreadTile0"]):
-          imod.addCode(Code.MacInst(kernel,blockA,blockB,bufferIdx,iuiCount))
-          if beAggressive and not doOnce:
-            imod.addInst("s_setprio ","1","Raise priority while processing macs")
-            doOnce = True
-
-    else:
-      printExit("Assembly doesn't support %s" % kernel["ProblemType"]["DataType"])
-
-    if beAggressive and doOnce:
-      imod.addInst("s_setprio ","0","Reset priority after macs")
-
-    return imod
 
   ##############################################################################
   # At Least 1 Unroll
