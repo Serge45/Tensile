@@ -7053,7 +7053,6 @@ class KernelWriterAssembly(KernelWriter):
         else:
           imod.addInst("s_cmp_eq_u32",  self.loopCounter(kernel, self.unrollIdx), \
                     sgpr("StaggerUIter"), "Is this the wrapIter?")
-        #kStr += self.assert_scc_is_1() # break at the wrap iteration
         imod.addInst("s_cselect_b32", sgpr(incLower), sgpr("WrapU%s+0"%tc), sgpr("GlobalReadIncs%s+%u"%(tc,self.unrollIdx)), \
                     "incLower <- ?")
         imod.addInst("s_cselect_b32", sgpr(incUpper), sgpr("WrapU%s+1"%tc), 0,
@@ -14084,77 +14083,6 @@ class KernelWriterAssembly(KernelWriter):
       kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
           "assert: restore execmask")
 
-    return kStr
-
-  def assert_s_eq(self, sval0, sval1, cookie=-1):
-    kStr = ""
-    if self.db["EnableAsserts"]:
-      kStr += inst("s_and_saveexec_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: saved execmask")
-
-      kStr += inst("s_mov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask", self.laneSGPRCount), -1, "")
-      kStr += inst("s_cmp_eq_u32", sval0, sval1, "cmp")
-      kStr += inst("s_cmov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask", self.laneSGPRCount),  0, "No assert if SCC=1")
-
-      kStr += self.assertCommon(cookie)
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: restore execmask")
-
-      return kStr
-
-  def assert_scc_is_1(self, cookie=-1):
-    kStr = ""
-    if self.db["EnableAsserts"]:
-      kStr += inst("s_and_saveexec_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: saved execmask")
-
-      kStr += inst("s_mov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), -1, "")
-      kStr += inst("s_cmov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount),  0, "No assert if SCC=1")
-
-      kStr += self.assertCommon(cookie)
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: restore execmask")
-
-      return kStr
-
-  def assert_scc_is_0(self, cookie=-1):
-    kStr = ""
-    if self.db["EnableAsserts"]:
-      kStr += inst("s_and_saveexec_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: saved execmask")
-
-      kStr += inst("s_mov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), -1, "")
-      kStr += inst("s_cmov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask", self.laneSGPRCount),  0, "")
-      kStr += inst("s_not_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), sgpr("SaveExecMask", self.laneSGPRCount), "Assert if SCC==1")
-
-      kStr += self.assertCommon(cookie)
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: restore execmask")
-
-      return kStr
-
-  # Assert that all bits in vcc are true, or assert/bomb otherwise
-  def assert_vcc_all_true(self, cookie=-1):
-    kStr = ""
-    if self.db["EnableAsserts"]:
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), 0, \
-          "assert: saved execmask")
-      kStr += inst("s_mov_b{}".format(self.kernel["WavefrontSize"]), self.exec, self.vcc, "Predicate based on VCC")
-      kStr += self.assertCommon(cookie)
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: restore execmask")
-    return kStr
-
-  # Assert that all bits in vcc are false, or assert/bomb otherwise
-  def assert_vcc_all_false(self, cookie=-1):
-    kStr = ""
-    if self.db["EnableAsserts"]:
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), 0, \
-          "assert: saved execmask")
-      kStr += inst("s_not_b{}".format(self.kernel["WavefrontSize"]), self.exec, self.vcc, "Predicate based on !VCC")
-      kStr += self.assertCommon(cookie)
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: restore execmask")
     return kStr
 
   # assert v0 + expectedScalarDiff == v1
