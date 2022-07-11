@@ -27,15 +27,15 @@ from .SolutionStructs import isPackedIndex
 from .Utils import ceil_divide
 from .AsmMemoryInstruction import MemoryInstruction
 from .AsmRegisterPool import RegisterPool
-from .AsmUtils import inst, vgpr, sgpr, log2, vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply
+from .AsmUtils import inst, vgpr, sgpr, log2, vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, SaturateCastType
 from .Activation import ActivationModule, ActivationType, RemoveDuplicateAssignment
 
 from math import ceil, trunc, modf, log
 from copy import deepcopy
+from typing import NamedTuple
 import collections
 import os
 import shlex
-from enum import Enum
 
 ################################################################################
 # Assembly Kernel
@@ -9236,6 +9236,13 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   # Global Write Elements
   ##############################################################################
+
+  class BF16CVTVgprStruct(NamedTuple): # class for bf16 vgprs
+    vgprBf16Temp: int = -1
+    vgprBf16Mask: int = -1
+    vgprFp32Nan: int = -1
+    vgprBf16Inc: int = -1
+
   def globalWriteElements(self, kernel, vectorWidths, elements,
                           applyAlpha=True, # defaults to generating *=alpha codes
                           betas=None, # if left unspecified, then let global parameter decide
@@ -9298,6 +9305,8 @@ class KernelWriterAssembly(KernelWriter):
 
     isHpaBF16 = kernel["ProblemType"]["DestDataType"].isBFloat16() and kernel["ProblemType"]["HighPrecisionAccumulate"]
     bf16CVTVgpr = self.vgprPool.checkOut(4) if isHpaBF16 else None
+    bf16CVTVgprStruct = self.BF16CVTVgprStruct(vgprBf16Temp=bf16CVTVgpr, vgprBf16Mask=(bf16CVTVgpr+1),
+                                               vgprFp32Nan=(bf16CVTVgpr+2), vgprBf16Inc=(bf16CVTVgpr+3)) if bf16CVTVgpr else None
 
     ########################################
     # Sgprs
@@ -9539,7 +9548,7 @@ class KernelWriterAssembly(KernelWriter):
 
           kStr += self.globalWriteBatch(kernel, activation, self.ss, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
               elementsThisBatch, self.coord0, self.coord1, self.addrD, self.addrC, \
-              tmpVgpr, bf16CVTVgpr, \
+              tmpVgpr, bf16CVTVgprStruct, \
               elementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, isOptNLL)
         # Delete tmp class
         del getTmpSgprClass
@@ -9919,7 +9928,7 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   def globalWriteBatch(self, kernel, activation, ss, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
       batchElements, coord0, coord1, addrD, addrC, \
-      tmpVgpr, bf16CVTVgpr, batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, isOptNLL):
+      tmpVgpr, bf16CVTVgprStruct, batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, isOptNLL):
     kStr = ""
 
     kStr += self.comment1("optSingleColVgpr=%u optSharedColVgpr=%u optSGPRUsage=%s optSrdIncForRow=%u" % \
@@ -10465,22 +10474,20 @@ class KernelWriterAssembly(KernelWriter):
           activationEnumStrList.append(str(kernel["ProblemType"]["ActivationType"]).lower())
       else:
         activationLabels.append("")
+        activationEnumStrList.append("none")
       loadsIssuedRestore = loadsIssued
       storesIssuedRestore = storesIssued
       for index, activationLabelStr in enumerate(activationLabels):
         loadsIssued = loadsIssuedRestore
         storesIssued = storesIssuedRestore
+        activationTypeStr = activationEnumStrList[index]
         if activationLabelStr:
           kStr += "%s:%s" % (activationLabelStr, self.endLine)
 
         if kernel["ProblemType"]["DestDataType"].isBFloat16() and kernel["ProblemType"]["HighPrecisionAccumulate"]:
-          vgprBf16Temp = bf16CVTVgpr
-          vgprBf16Mask = vgprBf16Temp + 1
-          vgprFp32Nan = vgprBf16Temp + 2
-          vgprBf16Inc = vgprBf16Temp + 3
-          kStr += inst("v_mov_b32", vgpr(vgprBf16Mask), "0xffff0000", "mask for pack two bfloat16 element to 32bit" )
-          kStr += inst("v_mov_b32", vgpr(vgprFp32Nan), "0x7fff0000", "fp32 Nan" )
-          kStr += inst("v_mov_b32", vgpr(vgprBf16Inc), "0x7fff", "rounding bias for bfloat16" )
+          kStr += inst("v_mov_b32", vgpr(bf16CVTVgprStruct.vgprBf16Mask), "0xffff0000", "mask for pack two bfloat16 element to 32bit" )
+          kStr += inst("v_mov_b32", vgpr(bf16CVTVgprStruct.vgprFp32Nan), "0x7fff0000", "fp32 Nan" )
+          kStr += inst("v_mov_b32", vgpr(bf16CVTVgprStruct.vgprBf16Inc), "0x7fff", "rounding bias for bfloat16" )
 
         storeCode = ""
         for elementIdx in range(0, len(batchElements)):
@@ -10562,7 +10569,7 @@ class KernelWriterAssembly(KernelWriter):
                   # src2 = sumIdxV = f32 = opsel 00
                   dataCExternal = ss.elementData[elementIdx] + vi//2
                   if (vi%2) == 1:
-                    kStr += inst("v_and_b32", vgpr(tmpVgpr), vgpr(dataCExternal), vgpr(vgprBf16Mask), "convert bf16 to fp32")
+                    kStr += inst("v_and_b32", vgpr(tmpVgpr), vgpr(dataCExternal), vgpr(bf16CVTVgprStruct.vgprBf16Mask), "convert bf16 to fp32")
                   else:
                     kStr += inst("v_lshlrev_b32", vgpr(tmpVgpr), "16", vgpr(dataCExternal), "convert bf16 to fp32" )
                   kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%sumIdxV), vgpr(tmpVgpr), sgpr("Beta"), \
@@ -10619,83 +10626,13 @@ class KernelWriterAssembly(KernelWriter):
                 # c.imag += a.imag * b.real
                 kStr += "v_fma_f64 %s, %s, %s, %s%s" % (vgpr("ValuC+%u"%(sumIdxV*4+2),2), vgpr(dataV+2,2), sgpr("Beta+0",2), vgpr("ValuC+%u"%(sumIdxV*4+2),2), self.endLine)
 
-          SaturateTypeInt8 = self.SaturateCastType.NORMAL
-          # Activation using HighPrecisionAccumulate type
-          insertActivationAfterPacked = False
-          if ((kernel["ProblemType"]["ActivationType"] != 'none') and \
-            (kernel["_GlobalAccumulation"] != 'MultipleBuffer') and kernel["ActivationFused"]):
-            if kernel["ProblemType"]["ActivationHPA"]:
-              # Still use BFloat16 for abs.
-              if kernel["ProblemType"]["DestDataType"].isBFloat16() and (activationEnumStrList[index] == 'abs'):
-                insertActivationAfterPacked = True
-              elif kernel["ProblemType"]["DestDataType"].isHalf() and \
-                 ((activationEnumStrList[index] == 'abs') or (activationEnumStrList[index] == 'relu')):
-                insertActivationAfterPacked = True
-              else:
-                if kernel["ProblemType"]["DestDataType"].isInt8():
-                  if (activationEnumStrList[index] == 'abs') or (activationEnumStrList[index] == 'relu'):
-                    SaturateTypeInt8 = self.SaturateCastType.DO_NOTHING
-                    activation.setSaturationForInt8(True)
-                activation.setVgprPrefixFormat("ValuC+%u")
-                modules = Code.Module("ActivationBeforePack")
-                for vi in range(0, gwvw):
-                  vgprIdx = ss.elementSumIdx[elementIdx] + vi
-                  module = activation.getModule(activationCDataType, activationEnumStrList[index], vgprIdx)
-                  modules.addCode(activation.assignGpr(module, tmpVgpr, tmpSgpr))
-                RemoveDuplicateAssignment(modules)
-                kStr += str(modules)
-                activation.setSaturationForInt8(False)
-                activation.setVgprPrefixFormat("")
-            else:
-              insertActivationAfterPacked = True
-
-          # pack stores, beta and non-beta reach here:
-          packedVgprIdxList = []
-          if kernel["ProblemType"]["HighPrecisionAccumulate"] and (kernel["_GlobalAccumulation"] != 'MultipleBuffer'):
-            for vi in range(0, gwvw):
-              sumIdxV = ss.elementSumIdx[elementIdx] + vi
-              if kernel["ProblemType"]["DestDataType"].isHalf():
-                kStr += inst("v_cvt_f16_f32", vgpr("ValuC+%u"%sumIdxV), vgpr("ValuC+%u"%sumIdxV), "convert C to fp16" )
-                if vi%2 == 1:
-                  assert (gwvw % 2 == 0)
-                  d = ss.elementSumIdx[elementIdx] + vi//2
-                  packedVgprIdxList.append(d)
-                  kStr += inst("v_pack_b32_f16", vgpr(d), vgpr("ValuC+%u"%(sumIdxV-1)), vgpr("ValuC+%u"%sumIdxV), "Pack with neighbor" )
-                else:
-                  packedVgprIdxList.append(sumIdxV)
-
-              elif kernel["ProblemType"]["DestDataType"].isBFloat16():
-                kStr += inst("v_cmp_u_f32", sgpr(tmpS01,laneSGPRC), vgpr("ValuC+%u"%sumIdxV), vgpr("ValuC+%u"%sumIdxV), "check Nan" )
-                kStr += inst("v_bfe_u32", vgpr(vgprBf16Temp), vgpr("ValuC+%u"%sumIdxV), "16", "1", "Non-Nan case: store lsb of bf16" )
-                kStr += inst("v_add3_u32", vgpr(vgprBf16Temp), vgpr("ValuC+%u"%sumIdxV), vgpr(vgprBf16Temp), vgpr(vgprBf16Inc), "Non-Nan case: add lsb and the increment for rounding" )
-                kStr += inst("v_cndmask_b32", vgpr("ValuC+%u"%sumIdxV), vgpr(vgprBf16Temp), vgpr(vgprFp32Nan), sgpr(tmpS01,laneSGPRC), "" )
-                if vi%2 == 0:
-                  kStr += inst("v_lshrrev_b32", vgpr("ValuC+%u"%sumIdxV), "16", vgpr("ValuC+%u"%sumIdxV), "convert C to bf16" )
-                  packedVgprIdxList.append(sumIdxV)
-                elif vi%2 == 1:
-                  d = ss.elementSumIdx[elementIdx] + vi//2
-                  kStr += inst("v_and_or_b32", vgpr(d), vgpr("ValuC+%u"%sumIdxV), vgpr(vgprBf16Mask), vgpr("ValuC+%u"%(sumIdxV-1)), "pack two bf16 to dword")
-                  packedVgprIdxList.append(d)
-
-              elif kernel["ProblemType"]["DestDataType"].isInt8():
-                assert (gwvw % 4 == 0)
-                if vi%4 == 0:
-                  d = ss.elementSumIdx[elementIdx] + vi//4
-                  SaturateTypeInt8 = self.SaturateCastType.NORMAL if not SaturateTypeInt8 else SaturateTypeInt8
-                  for i in range(0, 4):
-                    kStr += self.saturateCastInt(sumIdxV+i, tmpVgpr, tmpS01, -128, 127, type=SaturateTypeInt8, initGpr=(i%4 == 0))
-                  kStr += inst("v_lshlrev_b16", vgpr("ValuC+%u"%(sumIdxV+1)), 8, vgpr("ValuC+%u"%(sumIdxV+1)), "" )
-                  kStr += inst("v_lshlrev_b16", vgpr("ValuC+%u"%(sumIdxV+3)), 8, vgpr("ValuC+%u"%(sumIdxV+3)), "" )
-                  int8CombineStr = vgpr("ValuC+%u"%(sumIdxV+1)) + " dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD"
-                  kStr += inst("v_or_b32", vgpr("ValuC+%u"%(sumIdxV)), vgpr("ValuC+%u"%(sumIdxV)), int8CombineStr, "" )
-                  int8CombineStr = vgpr("ValuC+%u"%(sumIdxV+3)) + " dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD"
-                  kStr += inst("v_or_b32", vgpr("ValuC+%u"%(sumIdxV+1)), vgpr("ValuC+%u"%(sumIdxV+2)), int8CombineStr, "" )
-                  int8CombineStr = vgpr("ValuC+%u"%(sumIdxV+1)) + " dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD"
-                  kStr += inst("v_or_b32", vgpr(d), vgpr("ValuC+%u"%(sumIdxV)), int8CombineStr, "" )
-
+          SaturateTypeInt8 = SaturateCastType.NORMAL
           # Activation
-          if insertActivationAfterPacked:
-            modules = Code.Module("ActivationAfterPack")
+          activationModule = ""
+          isActivationInsertAfter = False
+          if self.insertActivationAfterPacked(kernel, activationTypeStr):
+            isActivationInsertAfter = True
+            activationModule = Code.Module("ActivationAfterPack")
             for vi in range(0, gwvw):
               sumIdxV = ss.elementSumIdx[elementIdx] + vi
               if kernel["ProblemType"]["DestDataType"].isHalf() or \
@@ -10709,7 +10646,7 @@ class KernelWriterAssembly(KernelWriter):
                     assert (gwvw % 2 == 0)
                   else:
                     continue
-                  vgprIdx = packedVgprIdxList[vi]
+                  vgprIdx = ss.elementSumIdx[elementIdx] + vi//2
                 else:
                   if (sumIdxV % 2 != 0):
                     continue
@@ -10723,11 +10660,43 @@ class KernelWriterAssembly(KernelWriter):
               else:
                 raise RuntimeError("Unsupported data type %s for activation vgpr index."%str(kernel["ProblemType"]["DestDataType"]))
               # Here we still use DestDataType cause the data is ready to be written to global
-              module = activation.getModule(kernel["ProblemType"]["DestDataType"], activationEnumStrList[index], vgprIdx)
-              modules.addCode(activation.assignGpr(module, tmpVgpr, tmpSgpr))
+              module = activation.getModule(kernel["ProblemType"]["DestDataType"], activationTypeStr, vgprIdx)
+              activationModule.addCode(activation.assignGpr(module, tmpVgpr, tmpSgpr))
               activation.setUsePK(True)
-            RemoveDuplicateAssignment(modules)
-            kStr += str(modules)
+          else:
+            activationModule = Code.Module("ActivationBeforePack")
+            if kernel["ProblemType"]["DestDataType"].isInt8():
+              if (activationTypeStr == 'abs') or (activationTypeStr == 'relu'):
+                SaturateTypeInt8 = SaturateCastType.DO_NOTHING
+                activation.setSaturationForInt8(True)
+            activation.setVgprPrefixFormat("ValuC+%u")
+            for vi in range(0, gwvw):
+              vgprIdx = ss.elementSumIdx[elementIdx] + vi
+              module = activation.getModule(activationCDataType, activationTypeStr, vgprIdx)
+              activationModule.addCode(activation.assignGpr(module, tmpVgpr, tmpSgpr))
+            activation.setSaturationForInt8(False)
+            activation.setVgprPrefixFormat("")
+          RemoveDuplicateAssignment(activationModule)
+
+          # pack stores, beta and non-beta reach here:
+          packModule = ""
+          if kernel["ProblemType"]["HighPrecisionAccumulate"] and (kernel["_GlobalAccumulation"] != 'MultipleBuffer'):
+            packdata = Component.PackData.find(self)
+            if kernel["ProblemType"]["DestDataType"].isHalf():
+              packModule = packdata(gwvw, ss.elementSumIdx[elementIdx], inputPrefix="ValuC+")
+            elif kernel["ProblemType"]["DestDataType"].isBFloat16():
+              packModule = packdata(gwvw, ss.elementSumIdx[elementIdx], bf16CVTVgprStruct=bf16CVTVgprStruct,
+                                    tmpS01=tmpS01, laneSGPRC=laneSGPRC, inputPrefix="ValuC+")
+            elif kernel["ProblemType"]["DestDataType"].isInt8():
+              packModule = packdata(gwvw, ss.elementSumIdx[elementIdx], tmpVgpr, tmpS01,
+                                    SaturateTypeInt8=SaturateTypeInt8, inputPrefix="ValuC+")
+
+          if isActivationInsertAfter:
+            kStr += str(packModule)
+            kStr += str(activationModule)
+          else:
+            kStr += str(activationModule)
+            kStr += str(packModule)
 
           if not kernel["StoreRemapVectorWidth"]:
             tmpStoreCode = self.addStore(kernel, ss, addrCalc, sumIdx, tmpS01, edge)
@@ -10859,6 +10828,25 @@ class KernelWriterAssembly(KernelWriter):
     skipPGR2 = self.getLabelNum("skipPGR2")
     imod.addInst("label_%04u:" % (skipPGR2),"")
     return imod
+
+  ########################################
+  # Activation related
+  ########################################
+
+  def insertActivationAfterPacked(self, kernel, activationTypeStr):
+    result = False
+    if ((kernel["ProblemType"]["ActivationType"] != 'none') and \
+      (kernel["_GlobalAccumulation"] != 'MultipleBuffer') and kernel["ActivationFused"]):
+      if kernel["ProblemType"]["ActivationHPA"]:
+        # Still use BFloat16 for abs.
+        if kernel["ProblemType"]["DestDataType"].isBFloat16() and (activationTypeStr == 'abs'):
+          result = True
+        elif kernel["ProblemType"]["DestDataType"].isHalf() and \
+           ((activationTypeStr == 'abs') or (activationTypeStr == 'relu')):
+          result = True
+      else:
+        result = True
+    return result
 
   ##############################################################################
   # Function End
@@ -11478,37 +11466,4 @@ class KernelWriterAssembly(KernelWriter):
       kStr += inst("v_mov_b32", vgpr(tmp), sgprStore, "debug dump sgpr store")
       kStr += self.dump(tmp)
       self.vgprPool.checkIn(vgpr(tmp))
-    return kStr
-
-  ########################################
-  # Saturate Cast Integer
-  ########################################
-
-  class SaturateCastType(Enum):
-    NORMAL = 1
-    DO_NOTHING = 2
-    UPPER = 3
-    LOWER = 4
-
-  def saturateCastInt(self, sumIdxV, tmpVgpr, tmpSgpr, lowerBound, upperBound, type=SaturateCastType.NORMAL, initGpr=True):
-    # SaturateCastType = 0, normal case
-    # SaturateCastType = 1, do nothing
-    # SaturateCastType = 2, upperbound only
-    # SaturateCastType = 3, lowerbound only
-    kStr = ""
-    if type == self.SaturateCastType.NORMAL:
-      tmpLowerBound = tmpSgpr
-      tmpUpperBound = tmpVgpr
-      if initGpr:
-        lowerBoundHex = hex(lowerBound)
-        upperBoundHex = hex(upperBound)
-        kStr += inst("s_movk_i32", sgpr(tmpLowerBound), lowerBoundHex, "%d"%lowerBound )
-        kStr += inst("v_mov_b32", vgpr(tmpUpperBound), upperBoundHex, "%d"%upperBound )
-      kStr += inst("v_med3_i32", vgpr("ValuC+%u"%(sumIdxV)), vgpr("ValuC+%u"%(sumIdxV)), sgpr(tmpLowerBound), vgpr(tmpUpperBound), "x= min(%d, max(%d, x))"%(upperBound, lowerBound) )
-    elif type == self.SaturateCastType.DO_NOTHING:
-      pass
-    elif type == self.SaturateCastType.UPPER:
-      kStr += inst("v_min_i32", vgpr("ValuC+%u"%(sumIdxV)), upperBound, vgpr("ValuC+%u"%(sumIdxV)), "x = min(%d, x)"%upperBound )
-    elif type == self.SaturateCastType.LOWER:
-      kStr += inst("v_max_i32", vgpr("ValuC+%u"%(sumIdxV)), lowerBound, vgpr("ValuC+%u"%(sumIdxV)), "x = max(%d, x)"%lowerBound )
     return kStr

@@ -39,4 +39,5 @@ __all__ = [
     "ComputeStoreVgprs",
     "NotLocalFullTileElements",
     "LraTileAssignment",
+    "PackData",
     ]

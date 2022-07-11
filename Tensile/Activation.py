@@ -233,6 +233,8 @@ class ActivationModule:
             module = self.getSigmoidModule(cDataType, vgprIdx)
         elif (activationType == 'tanh'):
             module = self.getTanhModule(cDataType, vgprIdx, "activationAlpha", "activationBeta")
+        elif (activationType == 'none'):
+            module = Module("No activation")
         else:
             module = Module("%s not implemented"%activationType)
 

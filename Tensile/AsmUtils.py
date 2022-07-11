@@ -20,6 +20,8 @@
 ################################################################################
 
 from math import log
+from enum import Enum
+from .Code import Module
 
 ########################################
 # Format Instruction
@@ -281,3 +283,37 @@ def scalarStaticMultiply(product, operand, multiplier, tmpSgpr=None, comment="")
     else:
         # notice that the src-order of s_lshl_b64 is different from v_lshlrev_b32.
         return inst("s_lshl_b64", product, operand, hex(multiplier_log2), comment)
+
+########################################
+# Saturate Cast Integer
+########################################
+
+class SaturateCastType(Enum):
+    NORMAL = 1
+    DO_NOTHING = 2
+    UPPER = 3
+    LOWER = 4
+
+def saturateCastInt(sumIdxV, tmpVgpr, tmpSgpr, lowerBound, upperBound, type=SaturateCastType.NORMAL, initGpr=True):
+    # SaturateCastType = 0, normal case
+    # SaturateCastType = 1, do nothing
+    # SaturateCastType = 2, upperbound only
+    # SaturateCastType = 3, lowerbound only
+    initGprStr = "with init gpr" if initGpr else "without init gpr"
+    module = Module("SaturateCastInt %s"%(initGprStr))
+    if type == SaturateCastType.NORMAL:
+        tmpLowerBound = tmpSgpr
+        tmpUpperBound = tmpVgpr
+        if initGpr:
+            lowerBoundHex = hex(lowerBound)
+            upperBoundHex = hex(upperBound)
+            module.addInst("s_movk_i32", sgpr(tmpLowerBound), lowerBoundHex, "%d"%lowerBound )
+            module.addInst("v_mov_b32", vgpr(tmpUpperBound), upperBoundHex, "%d"%upperBound )
+        module.addInst("v_med3_i32", vgpr("ValuC+%u"%(sumIdxV)), vgpr("ValuC+%u"%(sumIdxV)), sgpr(tmpLowerBound), vgpr(tmpUpperBound), "x= min(%d, max(%d, x))"%(upperBound, lowerBound) )
+    elif type == SaturateCastType.DO_NOTHING:
+        pass
+    elif type == SaturateCastType.UPPER:
+        module.addInst("v_min_i32", vgpr("ValuC+%u"%(sumIdxV)), upperBound, vgpr("ValuC+%u"%(sumIdxV)), "x = min(%d, x)"%upperBound )
+    elif type == SaturateCastType.LOWER:
+        module.addInst("v_max_i32", vgpr("ValuC+%u"%(sumIdxV)), lowerBound, vgpr("ValuC+%u"%(sumIdxV)), "x = max(%d, x)"%lowerBound )
+    return module
