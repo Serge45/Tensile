@@ -22,6 +22,9 @@
 from math import log
 from enum import Enum
 from .Code import Module
+from .Common import printExit
+import random
+import string
 
 ########################################
 # Format Instruction
@@ -317,3 +320,52 @@ def saturateCastInt(sumIdxV, tmpVgpr, tmpSgpr, lowerBound, upperBound, type=Satu
     elif type == SaturateCastType.LOWER:
         module.addInst("v_max_i32", vgpr("ValuC+%u"%(sumIdxV)), lowerBound, vgpr("ValuC+%u"%(sumIdxV)), "x = max(%d, x)"%lowerBound )
     return module
+
+########################################
+# Label Manager
+########################################
+
+def magicGenerator(chars=(string.ascii_uppercase + string.digits)):
+    return ''.join(random.choice(chars) for _ in range(16))
+
+class LabelManager():
+    def __init__(self):
+        self.labelDict = dict()
+
+    def addName(self, name):
+        if name not in self.labelDict:
+            self.labelDict[name] = 0
+        else:
+            self.labelDict[name] += 1
+
+    def getUniqueName(self):
+        name = magicGenerator()
+        while 1:
+            if name not in self.labelDict:
+                break
+            name = magicGenerator()
+        return self.getName(name)
+
+    def getUniqueNamePrefix(self, prefix):
+        name = prefix + "_" + magicGenerator()
+        while 1:
+            if name not in self.labelDict:
+                break
+            name = prefix + "_" + magicGenerator()
+        return self.getName(name)
+
+    def getName(self, name):
+        if name not in self.labelDict:
+            self.labelDict[name] = 0
+        return name + "_" + str(self.labelDict[name])
+
+    def getNameInc(self, name):
+        self.addName(name)
+        return name + "_" + str(self.labelDict[name])
+
+    def getNameIndex(self, name, index):
+        if name not in self.labelDict:
+            printExit("You have to add a label first to get a label name with specific index.")
+        if index > self.labelDict[name]:
+            printExit("The index %u exceeded. (> %u)"%(index, self.labelDict[name]))
+        return name + "_" + str(index)

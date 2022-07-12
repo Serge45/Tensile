@@ -27,7 +27,7 @@ from .SolutionStructs import isPackedIndex
 from .Utils import ceil_divide
 from .AsmMemoryInstruction import MemoryInstruction
 from .AsmRegisterPool import RegisterPool
-from .AsmUtils import inst, vgpr, sgpr, log2, vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, SaturateCastType
+from .AsmUtils import inst, vgpr, sgpr, log2, vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, SaturateCastType, LabelManager
 from .Activation import ActivationModule, ActivationType, RemoveDuplicateAssignment
 
 from math import ceil, trunc, modf, log
@@ -37,9 +37,11 @@ import collections
 import os
 import shlex
 
+
 ################################################################################
 # Assembly Kernel
 ################################################################################
+
 class KernelWriterAssembly(KernelWriter):
 
   ##############################################################################
@@ -165,7 +167,7 @@ class KernelWriterAssembly(KernelWriter):
     self.commentSuffix = "*/"
     self.commentHR = "*"*40
     self.indent = ""
-    self.labels = {}
+    self.labels = LabelManager()
     self.localReadOffsetA = 0
     self.localReadOffsetB = 0
     self.inTailLoop = False
@@ -358,60 +360,6 @@ class KernelWriterAssembly(KernelWriter):
         return sgpr("Stride%s%s"%(tc,self.indexChars[dim]))
     else:
       raise ValueError("unexpected tensorChar='%s' in stride function"%tc)
-
-  ########################################
-  # Get Label
-  # return label number - create new if it doesn't already exist
-  ########################################
-  def getLabelNum(self, name):
-    if name not in self.labels:
-      self.labels[name] = len(self.labels)
-    return self.labels[name]
-
-  ########################################
-  # return label name including a unique number
-  # create new if it doesn't already exist
-  ########################################
-  def getNamedLabel(self, name):
-    if name not in self.labels:
-      self.labels[name] = "%s_%u" % (name, len(self.labels))
-    return self.labels[name]
-
-  ########################################
-  # return label name that is always unique
-  # useful when trying to re-use subroutines that create labels
-  ########################################
-  def getNamedLabelUnique(self, name):
-    key = name + "_" + str(len(self.labels))
-    self.labels[key] = key
-    return key
-
-  ########################################
-  # return string that defines a unique named name_number
-  ########################################
-  def getNamedLabelDef(self, name, labelComment=""):
-    t = "%s: // %s\n" % (self.getNamedLabel(name), labelComment)
-    return t
-
-  ########################################
-  # return string that defines a unique numeric label
-  # labelComment is a comment string if this is a label definition
-  ##############################################################################
-  def getLabelDef(self,name,labelComment=""):
-    t = "label_%04u: // %s %s\n" % (self.getLabelNum(name), name, labelComment)
-    return t
-
-  ##############################################################################
-  # define a label and return undecorated label_%4u - suitable for using as jump target
-  ##############################################################################
-  def getLabelTarget(self,name,labelDef=None):
-    t = "label_%04u" % (self.getLabelNum(name))
-    return t
-
-  ##############################################################################
-  def getUniqLabel(self):
-    name = "uniq_label_" + str(len(self.labels))
-    return self.getLabelNum(name)
 
   ##############################################################################
   # Find Memory Instruction For Width and Stride
@@ -1618,18 +1566,7 @@ class KernelWriterAssembly(KernelWriter):
     # pre-determine labels in order
     unrollChar = self.indexChars[ \
         kernel["ProblemType"]["IndicesSummation"][self.unrollIdx]]
-    self.labels = {}
-    #self.getLabelNum("PrefetchGlobalBegin")
-    self.getNamedLabel("PrefetchGlobalEnd")
-    self.getNamedLabel("LoopBegin%s"%(unrollChar))
-    self.getNamedLabel("LoopEnd%s"%(unrollChar))
-    self.getNamedLabel("LoopEnd%s_oddexit"%(unrollChar))
-    self.getNamedLabel("LoopEnd%s_evenexit"%(unrollChar))
-    self.getNamedLabel("PrefetchGlobalLastIterEnd")
-    self.getNamedLabel("TailLoopBegin%s"%(unrollChar))
-    self.getNamedLabel("TailLoopEnd%s"%(unrollChar))
-    self.getNamedLabel("SkipTailLoop%s"%(unrollChar))
-    self.getNamedLabel("KernelEnd%s"%(unrollChar))
+    self.labels = LabelManager()
     # shift vectors determined later
 
     canCheckValueC = (kernel["ProblemType"]["DataType"].isHalf() or kernel["ProblemType"]["DataType"].isBFloat16()) and \
@@ -2552,69 +2489,69 @@ class KernelWriterAssembly(KernelWriter):
           kStr += inst("s_mul_i32", sgpr(tmpSgpr), sgpr(Batch), 0x8, "offset of global buffer address")
           kStr += inst("_s_load_b64", sgpr("AddressD", 2), sgpr("AddressD",2), sgpr(tmpSgpr), "load global buffer D address")
 
-      endCheckLabel = self.getNamedLabel(f"label_skip_c_buffer_deref_{Batch}")
+      endCheckLabel = Code.Label(self.labels.getName(f"label_skip_c_buffer_deref_{Batch}"), "")
       if kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
         kStr += inst("v_cmp_eq_f64", sgpr(tmpSgpr, laneSC), sgpr("Beta", 2), 0.0, "Beta.real == 0.0 ?")
         kStr += inst("v_cmp_eq_f64", self.vcc, sgpr("Beta+2", 2), 0.0, "Beta.imag == 0.0 ?")
         kStr += inst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Beta == 0 ?")
         kStr += inst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if beta == 0")
-        kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel), "branch if beta == 0")
+        kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
       elif kernel["ProblemType"]["ComputeDataType"].isDouble():
         kStr += inst("v_cmp_eq_f64", self.vcc, sgpr("Beta", 2), 0.0, "Beta == 0.0 ?")
-        kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel), "branch if Beta == 0")
+        kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if Beta == 0")
       elif kernel["ProblemType"]["ComputeDataType"].isSingleComplex():
         kStr += inst("v_cmp_eq_f32", sgpr(tmpSgpr, laneSC), sgpr("Beta"), 0.0, "Beta.real == 0.0f ?")
         kStr += inst("v_cmp_eq_f32", self.vcc, sgpr("Beta+1"), 0.0, "Beta.imag == 0.0f ?")
         kStr += inst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Beta == 0 ?")
         kStr += inst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if beta == 0")
-        kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel), "branch if beta == 0")
+        kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
       elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
            kernel["ProblemType"]["ComputeDataType"].isHalf() or \
            kernel["ProblemType"]["ComputeDataType"].isBFloat16():
         kStr += inst("v_cmp_eq_f32", self.vcc, sgpr("Beta"), 0.0, "Beta == 0.0f ?")
-        kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel), "branch if beta == 0")
+        kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
       else: # int32
         kStr += inst("s_cmp_eq_u32", sgpr("Beta"), 0, "Beta == 0 ?")
-        kStr += inst("s_cbranch_scc1 %s" % (endCheckLabel), "branch if beta == 0")
+        kStr += inst("s_cbranch_scc1 %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
 
       for idx in kernel["ProblemType"]["IndicesBatch"]:
         if not isPackedIndex(kernel,idx):
           kStr += inst("s_mul_i32", sgpr(tmpSgpr), sgpr(Batch), 0x8, "offset of global buffer address")
           kStr += inst("_s_load_b64", sgpr("AddressC", 2), sgpr("AddressC",2), sgpr(tmpSgpr), "load global buffer C address")
 
-      kStr += self.getNamedLabelDef(f"label_skip_c_buffer_deref_{Batch}")
+      kStr += str(endCheckLabel)
 
     #handle Batch A/B
-    endCheckLabel = self.getNamedLabel(f"label_skip_ab_buffer_deref_{Batch}")
+    endCheckLabel = Code.Label(self.labels.getName(f"label_skip_ab_buffer_deref_{Batch}"), "")
     kStr += inst("s_mov_b32", sgpr(tmpSgpr), hex(1), "check summation size")
     for i in range(0, self.numSgprSizesSum):
       kStr += inst("s_mul_i32", sgpr(tmpSgpr), sgpr("SizesSum+%u"%(i)), sgpr(tmpSgpr), "check summation size")
     kStr += inst("s_cmp_eq_u32", sgpr(tmpSgpr), hex(0), "skip buffer deref is size of summation is 0")
-    kStr += inst("s_cbranch_scc1", endCheckLabel, "skip buffer deref is size of summation is 0")
+    kStr += inst("s_cbranch_scc1", endCheckLabel.getLabelName(), "skip buffer deref is size of summation is 0")
 
     if kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
       kStr += inst("v_cmp_eq_f64", sgpr(tmpSgpr, laneSC), sgpr("Alpha", 2), 0.0, "Alpha.real == 0.0 ?")
       kStr += inst("v_cmp_eq_f64", self.vcc, sgpr("Alpha+2", 2), 0.0, "Alpha.imag == 0.0 ?")
       kStr += inst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Alpha == 0 ?")
       kStr += inst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if alpha == 0")
-      kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel), "branch if alpha == 0")
+      kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
     elif kernel["ProblemType"]["ComputeDataType"].isDouble():
       kStr += inst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha == 0.0 ?")
-      kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel), "branch if Alpha == 0")
+      kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if Alpha == 0")
     elif kernel["ProblemType"]["ComputeDataType"].isSingleComplex():
       kStr += inst("v_cmp_eq_f32", sgpr(tmpSgpr, laneSC), sgpr("Alpha"), 0.0, "Alpha.real == 0.0f ?")
       kStr += inst("v_cmp_eq_f32", self.vcc, sgpr("Alpha+1"), 0.0, "Alpha.imag == 0.0f ?")
       kStr += inst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Alpha == 0 ?")
       kStr += inst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if alpha == 0")
-      kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel), "branch if alpha == 0")
+      kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
     elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
          kernel["ProblemType"]["ComputeDataType"].isHalf() or \
          kernel["ProblemType"]["ComputeDataType"].isBFloat16():
       kStr += inst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha == 0.0f ?")
-      kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel), "branch if alpha == 0")
+      kStr += inst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
     else: # int32
       kStr += inst("s_cmp_eq_u32", sgpr("Alpha"), 0, "Alpha == 0 ?")
-      kStr += inst("s_cbranch_scc1 %s" % (endCheckLabel), "branch if alpha == 0")
+      kStr += inst("s_cbranch_scc1 %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
 
     kStr += inst("s_mul_i32", sgpr(tmpSgpr), sgpr(Batch), 0x8, "offset of global buffer address")
     for idx in kernel["ProblemType"]["IndicesBatch"]:
@@ -2622,7 +2559,7 @@ class KernelWriterAssembly(KernelWriter):
         kStr += inst("_s_load_b64", sgpr("AddressA", 2), sgpr("AddressA",2), sgpr(tmpSgpr), "load global buffer A address")
         kStr += inst("_s_load_b64", sgpr("AddressB", 2), sgpr("AddressB",2), sgpr(tmpSgpr), "load global buffer B address")
 
-    kStr += self.getNamedLabelDef(f"label_skip_ab_buffer_deref_{Batch}")
+    kStr += str(endCheckLabel)
 
     return kStr
 
@@ -2761,41 +2698,41 @@ class KernelWriterAssembly(KernelWriter):
     if self.do["ApplyAlpha"]:
 
       kStr += self.comment("Short circuit condition if Alpha == 0, then sumDims=0")
-      endCheckLabel = "label_AlphaNonZero"
+      endCheckLabel = Code.Label("AlphaNonZero", "")
       if kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
         kStr += inst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha.real == 0.0 ?")
-        kStr += inst("s_cbranch_vccz %s" % (endCheckLabel), "branch if Alpha.real != 0")
+        kStr += inst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0")
         kStr += inst("v_cmp_eq_f64", self.vcc, sgpr("Alpha+2", 2), 0.0, "Alpha.imag == 0.0 ?")
-        kStr += inst("s_cbranch_vccz %s" % (endCheckLabel), "branch if Alpha.imag != 0")
+        kStr += inst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0")
 
       elif kernel["ProblemType"]["ComputeDataType"].isDouble():
         kStr += inst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha == 0.0 ?")
-        kStr += inst("s_cbranch_vccz %s" % (endCheckLabel), "branch if Alpha != 0")
+        kStr += inst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha != 0")
 
       elif kernel["ProblemType"]["ComputeDataType"].isSingleComplex():
         kStr += inst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha.real == 0.0f ?")
-        kStr += inst("s_cbranch_vccz %s" % (endCheckLabel), "branch if Alpha.real != 0")
+        kStr += inst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0")
         kStr += inst("v_cmp_eq_f32", self.vcc, sgpr("Alpha+1"), 0.0, "Alpha.imag == 0.0f ?")
-        kStr += inst("s_cbranch_vccz %s" % (endCheckLabel), "branch if Alpha.imag != 0")
+        kStr += inst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0")
 
       # AlphaType is f32 or two-concated-f16, or two-concated-bf16(not support)
       elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
            kernel["ProblemType"]["ComputeDataType"].isHalf() or \
            kernel["ProblemType"]["ComputeDataType"].isBFloat16():
         kStr += inst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha == 0.0f ?")
-        kStr += inst("s_cbranch_vccz %s" % (endCheckLabel), "branch if alpha != 0")
+        kStr += inst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if alpha != 0")
 
       # AlphaType is int32
       else:
         kStr += inst("s_cmp_eq_u32", sgpr("Alpha"), 0, "Alpha == 0 ?")
-        kStr += inst("s_cbranch_scc0 %s" % (endCheckLabel), "branch if alpha != 0")
+        kStr += inst("s_cbranch_scc0", endCheckLabel.getLabelName(), "branch if alpha != 0")
 
       # Conditional set summation dimensions to 0 on SCC==1
       for i in range(0, self.numSgprSizesSum):
         kStr += inst("s_mov_b32", sgpr("SizesSum+%u"%(i)), hex(0), "Set summation dim=0 if Alpha == 0")
 
       # Jump here if alpha is non-zero
-      kStr += "%s:%s" % (endCheckLabel, self.endLine)
+      kStr += str(endCheckLabel)
 
     if kernel["MagicDivAlg"]==2:
       for idxChar in sorted(set(kernel["PackedC0IdxChars"][:-1] + kernel["PackedC1IdxChars"][:-1])):
@@ -3749,7 +3686,7 @@ class KernelWriterAssembly(KernelWriter):
     # dump final offsets
     # BufferLoad flavor:
     #if tP["isA"]:
-    #  kStr += self.dump(vgpr("GlobalReadOffset%s+%u+0"%(tP["tensorChar"], graIdx)))
+    #  kStr += str(self.dump(vgpr("GlobalReadOffset%s+%u+0"%(tP["tensorChar"], graIdx))))
     # Flat load flavor:
     #kStr += dump(vgpr("GlobalReadAddr%s+%u+0"%(tP["tensorChar"], graIdx)))
     #kStr += dump(vgpr("GlobalReadAddr%s+%u+1"%(tP["tensorChar"], graIdx)))
@@ -4324,7 +4261,7 @@ class KernelWriterAssembly(KernelWriter):
       tP["gpr"]["subIterReg"] = None
     # dump lds write offsets
     #if tP["isA"]:
-      #kStr += self.dump(vgpr("LocalWriteAddr%s"%tP["tensorChar"]))
+      #kStr += str(self.dump(vgpr("LocalWriteAddr%s"%tP["tensorChar"])))
       #kStr += self.bomb(-40)
     # do not generate local write address code if DirectToVgpr is enabled
     return "" if self.dontAppendCode or kernel["DirectToVgpr%s"%tc] else kStr
@@ -4559,7 +4496,7 @@ class KernelWriterAssembly(KernelWriter):
   # used.
   ##############################################################################
   def openShadowInit(self, kernel):
-    return self.getNamedLabelDef("ShadowInitStart")
+    return Code.Label("ShadowInitStart", "")
 
   ##############################################################################
   # closeShadowInit
@@ -4574,9 +4511,9 @@ class KernelWriterAssembly(KernelWriter):
     if kernel["SuppressNoLoadLoop"]:
       loopChar = self.indexChars[ \
           kernel["ProblemType"]["IndicesSummation"][self.unrollIdx]]
-      lastIterEnd = self.getNamedLabel("LoopEnd%s"%loopChar)
+      lastIterEnd = "LoopEnd%s"%loopChar
     else:
-      lastIterEnd = self.getNamedLabel("PrefetchGlobalLastIterEnd")
+      lastIterEnd = "PrefetchGlobalLastIterEnd"
 
     # This branch could potentially be very far e.g. > SIMM16
     kStr += self.comment("after InitC, skip to end of prefetch last iter if numIter==0")
@@ -4593,26 +4530,27 @@ class KernelWriterAssembly(KernelWriter):
   # Use when erroring out "invalid operand due to label > SIMM16"
   ##############################################################################
   def longBranch(self, label):
-    kStr = ""
+    module = Code.Module("longBranch label %s"%label)
+    labelName = Code.Label.getFormatting(label)
     tmpSgpr = self.getTmpSgpr(3).idx()
-    positiveLabel = self.getNamedLabelUnique("Positive")
-    kStr += inst("s_getpc_B64", sgpr(tmpSgpr,2), "addr of next instr")
-    kStr += inst("s_add_i32",  sgpr(tmpSgpr+2), "%s"%label, hex(4), "target branch offset")
-    kStr += inst("s_cmp_ge_i32", sgpr(tmpSgpr+2), hex(0), "check positive or negative")
-    kStr += inst("s_cbranch_scc1 label_%s" % positiveLabel, "jump when positive")
+    positiveLabel = Code.Label(self.labels.getUniqueNamePrefix("Positive"), "")
+    module.addInst("s_getpc_B64", sgpr(tmpSgpr,2), "addr of next instr")
+    module.addInst("s_add_i32",  sgpr(tmpSgpr+2), "%s"%labelName, hex(4), "target branch offset")
+    module.addInst("s_cmp_ge_i32", sgpr(tmpSgpr+2), hex(0), "check positive or negative")
+    module.addInst("s_cbranch_scc1 %s" % positiveLabel.getLabelName(), "jump when positive")
 
     # negative offset
-    kStr += inst("s_abs_i32",  sgpr(tmpSgpr+2), sgpr(tmpSgpr+2), "abs offset")
-    kStr += inst("s_sub_u32",  sgpr(tmpSgpr),   sgpr(tmpSgpr),   sgpr(tmpSgpr+2), "sub target branch offset")
-    kStr += inst("s_subb_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "sub high and carry")
-    kStr += inst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%label)
+    module.addInst("s_abs_i32",  sgpr(tmpSgpr+2), sgpr(tmpSgpr+2), "abs offset")
+    module.addInst("s_sub_u32",  sgpr(tmpSgpr),   sgpr(tmpSgpr),   sgpr(tmpSgpr+2), "sub target branch offset")
+    module.addInst("s_subb_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "sub high and carry")
+    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
 
     # positive offset
-    kStr += "label_%s:%s"%(positiveLabel, self.endLine)
-    kStr += inst("s_add_u32",  sgpr(tmpSgpr), sgpr(tmpSgpr), sgpr(tmpSgpr+2), "add target branch offset")
-    kStr += inst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "add high and carry")
-    kStr += inst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%label)
-    return kStr
+    module.addCode(positiveLabel)
+    module.addInst("s_add_u32",  sgpr(tmpSgpr), sgpr(tmpSgpr), sgpr(tmpSgpr+2), "add target branch offset")
+    module.addInst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "add high and carry")
+    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
+    return module
 
   ##############################################################################
   # longBranchPositive - 32 bit offset (positive offset only)
@@ -4622,16 +4560,17 @@ class KernelWriterAssembly(KernelWriter):
   # Use when erroring out "invalid operand due to label > SIMM16"
   ##############################################################################
   def longBranchPositive(self, label):
-    kStr = ""
+    module = Code.Module("longBranchPositive label %s"%label)
+    labelName = Code.Label.getFormatting(label)
     tmpSgpr = self.getTmpSgpr(3).idx()
-    kStr += inst("s_getpc_B64", sgpr(tmpSgpr,2), "addr of next instr")
-    kStr += inst("s_add_i32",  sgpr(tmpSgpr+2), "%s"%label, hex(4), "target branch offset")
+    module.addInst("s_getpc_B64", sgpr(tmpSgpr,2), "addr of next instr")
+    module.addInst("s_add_i32",  sgpr(tmpSgpr+2), "%s"%labelName, hex(4), "target branch offset")
 
     # positive offset
-    kStr += inst("s_add_u32",  sgpr(tmpSgpr), sgpr(tmpSgpr), sgpr(tmpSgpr+2), "add target branch offset")
-    kStr += inst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "add high and carry")
-    kStr += inst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%label)
-    return kStr
+    module.addInst("s_add_u32",  sgpr(tmpSgpr), sgpr(tmpSgpr), sgpr(tmpSgpr+2), "add target branch offset")
+    module.addInst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "add high and carry")
+    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
+    return module
 
   ##############################################################################
   # longBranchNegative - 32 bit offset (negative offset only)
@@ -4641,17 +4580,18 @@ class KernelWriterAssembly(KernelWriter):
   # Use when erroring out "invalid operand due to label > SIMM16"
   ##############################################################################
   def longBranchNegative(self, label):
-    kStr = ""
+    module = Code.Module("longBranchNegative label %s"%label)
+    labelName = Code.Label.getFormatting(label)
     tmpSgpr = self.getTmpSgpr(3).idx()
-    kStr += inst("s_getpc_B64", sgpr(tmpSgpr,2), "addr of next instr")
-    kStr += inst("s_add_i32",  sgpr(tmpSgpr+2), "%s"%label, hex(4), "target branch offset")
+    module.addInst("s_getpc_B64", sgpr(tmpSgpr,2), "addr of next instr")
+    module.addInst("s_add_i32",  sgpr(tmpSgpr+2), "%s"%labelName, hex(4), "target branch offset")
 
     # negative offset
-    kStr += inst("s_abs_i32",  sgpr(tmpSgpr+2), sgpr(tmpSgpr+2), "abs offset")
-    kStr += inst("s_sub_u32",  sgpr(tmpSgpr),   sgpr(tmpSgpr),   sgpr(tmpSgpr+2), "sub target branch offset")
-    kStr += inst("s_subb_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "sub high and carry")
-    kStr += inst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%label)
-    return kStr
+    module.addInst("s_abs_i32",  sgpr(tmpSgpr+2), sgpr(tmpSgpr+2), "abs offset")
+    module.addInst("s_sub_u32",  sgpr(tmpSgpr),   sgpr(tmpSgpr),   sgpr(tmpSgpr+2), "sub target branch offset")
+    module.addInst("s_subb_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "sub high and carry")
+    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
+    return module
 
   ##############################################################################
   # longBranchScc0 - 32 bit offset
@@ -4659,17 +4599,17 @@ class KernelWriterAssembly(KernelWriter):
   # Use when erroring out "invalid operand due to label > SIMM16"
   ##############################################################################
   def longBranchScc0(self, label, positiveOnly=False, negativeOnly=False):
-    kStr = ""
-    noBranchLabel = self.getNamedLabelUnique("NoBranch")
-    kStr += inst("s_cbranch_scc1 label_%s" % noBranchLabel, "Only branch on scc0")
+    module = Code.Module("longBranchScc0 label %s"%label)
+    noBranchLabel = Code.Label(self.labels.getUniqueNamePrefix("NoBranch"), "")
+    module.addInst("s_cbranch_scc1 %s" % noBranchLabel.getLabelName(), "Only branch on scc0")
     if positiveOnly:
-      kStr += self.longBranchPositive(label)
+      module.addCode(self.longBranchPositive(label))
     elif negativeOnly:
-      kStr += self.longBranchNegative(label)
+      module.addCode(self.longBranchNegative(label))
     else:
-      kStr += self.longBranch(label)
-    kStr += "label_%s:%s"%(noBranchLabel, self.endLine)
-    return kStr
+      module.addCode(self.longBranch(label))
+    module.addCode(noBranchLabel)
+    return str(module)
 
   ##############################################################################
   # longBranchScc1 - 32 bit offset
@@ -4677,17 +4617,17 @@ class KernelWriterAssembly(KernelWriter):
   # Use when erroring out "invalid operand due to label > SIMM16"
   ##############################################################################
   def longBranchScc1(self, label, positiveOnly=False, negativeOnly=False):
-    kStr = ""
-    noBranchLabel = self.getNamedLabelUnique("NoBranch")
-    kStr += inst("s_cbranch_scc0 label_%s" % noBranchLabel, "Only branch on scc1")
+    module = Code.Module("longBranchScc1 label %s"%label)
+    noBranchLabel = Code.Label(self.labels.getUniqueNamePrefix("NoBranch"), "")
+    module.addInst("s_cbranch_scc0 %s" % noBranchLabel.getLabelName(), "Only branch on scc1")
     if positiveOnly:
-      kStr += self.longBranchPositive(label)
+      module.addCode(self.longBranchPositive(label))
     elif negativeOnly:
-      kStr += self.longBranchNegative(label)
+      module.addCode(self.longBranchNegative(label))
     else:
-      kStr += self.longBranch(label)
-    kStr += "label_%s:%s"%(noBranchLabel, self.endLine)
-    return kStr
+      module.addCode(self.longBranch(label))
+    module.addCode(noBranchLabel)
+    return str(module)
 
   ##############################################################################
   # Initialize C
@@ -4973,7 +4913,7 @@ class KernelWriterAssembly(KernelWriter):
         kStr += inst("s_cmov_b32", loopCounter, hex(0), "numIter=0 if gsuSimIdx!=remainder")
 
       # if tail numIter == 0 skip altogether
-      skipTailLoopLabel = self.getNamedLabel("SkipTailLoop%s"%(loopChar) )
+      skipTailLoopLabel = Code.Label.getFormatting("SkipTailLoop%s"%(loopChar) )
       kStr += inst("s_cmp_eq_u32", loopCounter, \
           hex(0), "numIter%s == 0"%loopChar )
       kStr += inst("s_mov_b32", sgpr("OrigLoopCounter"), 0, \
@@ -5042,13 +4982,13 @@ class KernelWriterAssembly(KernelWriter):
     loopChar = self.indexChars[ \
         kernel["ProblemType"]["IndicesSummation"][loopIdx]]
     if not tailLoop and not noLabelGen:
-      kStr += "%s:\n" % self.getNamedLabel("openLoop%s"%loopChar)
-    loopLabelBegin = self.getNamedLabel("%sLoopBegin%s%s"%("Tail" if tailLoop else "", loopChar, "_G2L%s"%uDu if uDu is not None else "" ) )
-    loopLabelEnd = self.getNamedLabel("%sLoopEnd%s%s"%("Tail" if tailLoop else "", loopChar, "_G2L%s"%uDu if uDu is not None else "") )
+      kStr += str(Code.Label("openLoop%s"%loopChar, ""))
+    loopLabelBegin = Code.Label("%sLoopBegin%s%s"%("Tail" if tailLoop else "", loopChar, "_G2L%s"%uDu if uDu is not None else "" ), "" )
+    loopLabelEnd = Code.Label("%sLoopEnd%s%s"%("Tail" if tailLoop else "", loopChar, "_G2L%s"%uDu if uDu is not None else ""), "" )
 
     if beginLabelOnly:
       # generate only beginLabel, then, return
-      kStr += "%s:%s" % (loopLabelBegin, self.endLine)
+      kStr += str(loopLabelBegin)
       return kStr
 
     # is numIter at least 1? otherwise skip to end
@@ -5077,7 +5017,7 @@ class KernelWriterAssembly(KernelWriter):
           loopCounter, \
           hex(endCounter), \
           "LoopCounter%s < EndCounter"%(loopChar) )
-      kStr += inst("s_cbranch_scc1 %s"%loopLabelEnd, \
+      kStr += inst("s_cbranch_scc1 %s"%loopLabelEnd.getLabelName(), \
           "do not enter Loop%s"%loopChar )
 
       kStr += inst("s_mov_b32", sgpr("OrigLoopCounter"), 0, \
@@ -5109,7 +5049,7 @@ class KernelWriterAssembly(KernelWriter):
 
       # begin loop
       if not noLabelGen:
-        kStr += "%s:%s" % (loopLabelBegin, self.endLine)
+        kStr += str(loopLabelBegin)
 
       # LSU mask for this iteration
       if kernel["LocalSplitU"] > 1:
@@ -5136,8 +5076,8 @@ class KernelWriterAssembly(KernelWriter):
                 loopCounter, \
                 sgpr("UnrollLoopLastIter"), \
                 "LoopCounter%s > EndCounter"%(loopChar) )
-          toPGR1 = self.getLabelNum("toPGR1")
-          kStr += inst("s_cbranch_scc1 label_%04u"%toPGR1, "PGR=2 but only 1 loop, toPGR1")
+          toPGR1 = Code.Label.getFormatting(self.labels.getName("toPGR1"))
+          kStr += inst("s_cbranch_scc1 %s"%toPGR1, "PGR=2 but only 1 loop, toPGR1")
 
         if self.unrollIncIsDepthU:
           if kernel["PrefetchGlobalRead"] == 2:
@@ -5158,12 +5098,12 @@ class KernelWriterAssembly(KernelWriter):
         jumpLabel = loopLabelEnd
         if kernel["PrefetchGlobalRead"]==2 and (not kernel["SuppressNoLoadLoop"]) and kernel["ExpandPointerSwap"]:
           # PGR=2 and EPS and no SuppressNoLoadLoop case, need to jump to EvenExit
-          jumpLabel = self.getNamedLabel("LoopEnd%s_evenexit"%(loopChar) )
-        kStr += inst("s_cbranch_scc1 %s"%jumpLabel, \
+          jumpLabel = Code.Label("LoopEnd%s_evenexit"%(loopChar), "" )
+        kStr += inst("s_cbranch_scc1 %s"%jumpLabel.getLabelName(), \
             "do not enter Loop%s"%loopChar )
 
       if not noLabelGen:
-        kStr += "%s:%s" % (loopLabelBegin, self.endLine)
+        kStr += str(loopLabelBegin)
 
       if loopIdx != self.unrollIdx:
         # reset LRO since these may have changed due to odd-iter exit ?
@@ -5186,7 +5126,7 @@ class KernelWriterAssembly(KernelWriter):
       loopIdx = self.unrollIdx
       loopChar = self.indexChars[ \
           kernel["ProblemType"]["IndicesSummation"][loopIdx]]
-      kStr += "%s:%s"%(self.getNamedLabel("SkipTailLoop%s"%(loopChar)), self.endLine)
+      kStr += str(Code.Label("SkipTailLoop%s"%(loopChar), ""))
       return kStr
 
     finalJump = "s_cbranch_scc0"
@@ -5198,9 +5138,9 @@ class KernelWriterAssembly(KernelWriter):
     if tailLoop:
       loopIdx = self.unrollIdx
       loopChar = self.indexChars[kernel["ProblemType"]["IndicesSummation"][loopIdx]]
-      loopLabelBegin = self.getNamedLabel("TailLoopBegin%s%s"%(loopChar, "_G2L%s"%uDu if uDu is not None else "") )
-      loopLabelEnd = self.getNamedLabel("TailLoopEnd%s%s"%(loopChar, "_G2L%s"%uDu if uDu is not None else "") )
-      loopLabelEndOddExit = self.getNamedLabel("TailLoopEnd%s_oddexit"%(loopChar) )
+      loopLabelBegin = Code.Label("TailLoopBegin%s%s"%(loopChar, "_G2L%s"%uDu if uDu is not None else ""), "" )
+      loopLabelEnd = Code.Label("TailLoopEnd%s%s"%(loopChar, "_G2L%s"%uDu if uDu is not None else ""), "" )
+      loopLabelEndOddExit = Code.Label("TailLoopEnd%s_oddexit"%(loopChar), "unroll loop odditer exit" )
       loopCounter = self.loopCounter(kernel, loopIdx)
 
       unrollInc      = 1
@@ -5236,10 +5176,10 @@ class KernelWriterAssembly(KernelWriter):
     else: # not tailloop
       loopChar = self.indexChars[ \
           kernel["ProblemType"]["IndicesSummation"][loopIdx]]
-      loopLabelBegin = self.getNamedLabel("LoopBegin%s"%(loopChar) )
-      loopLabelEnd = self.getNamedLabel("LoopEnd%s"%(loopChar) )
-      loopLabelEndOddExit = self.getNamedLabel("LoopEnd%s_oddexit"%(loopChar) )
-      loopLabelEndEvenExit = self.getNamedLabel("LoopEnd%s_evenexit"%(loopChar) )
+      loopLabelBegin = Code.Label("LoopBegin%s"%(loopChar), "" )
+      loopLabelEnd = Code.Label("LoopEnd%s"%(loopChar), "" )
+      loopLabelEndOddExit = Code.Label("LoopEnd%s_oddexit"%(loopChar), "unroll loop odditer exit" )
+      loopLabelEndEvenExit = Code.Label("LoopEnd%s_evenexit"%(loopChar), "unroll loop eveniter exit" )
       loopCounter = self.loopCounter(kernel, loopIdx)
       kStr += self.comment("closeLoop loop%s finalLoop=%d tailLoop=%d" % (loopChar, finalLoop, tailLoop))
 
@@ -5333,18 +5273,18 @@ class KernelWriterAssembly(KernelWriter):
     if not finalLoop:
       if nonFinalJumpNeeded:
         # just an exit check, else fall through to the next loop copy
-        kStr += inst("s_cbranch_scc1 %s"%(jumpLabel), "exit Loop%s"%loopChar )
+        kStr += inst("s_cbranch_scc1 %s"%(jumpLabel.getLabelName()), "exit Loop%s"%loopChar )
     else: #finalLoop:
 
       if tailLoop and kernel.enabledSplitLDS:
-        tailLoopLabelEnd = self.getNamedLabel(
+        tailLoopLabelEnd = Code.Label.getFormatting(
           "TailLoopEnd%s%s"%(loopChar, "_G2L%s"%(kernel["DepthULdsDivisor"]-1) if kernel.enabledSplitLDS else "") )
         kStr += inst("s_cbranch_scc1", tailLoopLabelEnd, "break Loop%s"%loopChar)
         thresForNextSubLoop = (uDu+1)*(kernel["_DepthULds"])
         kStr += inst("s_cmp_ge_u32", sgpr("OrigLoopCounter"), thresForNextSubLoop,
           "OrigLoopCounter >= %u (G2L buffer %u/%u)"%(thresForNextSubLoop, uDu, kernel["DepthULdsDivisor"]) )
 
-      kStr += inst("%s %s"%(finalJump, loopLabelBegin), \
+      kStr += inst("%s %s"%(finalJump, loopLabelBegin.getLabelName()), \
           "restart Loop%s"%(loopChar ))
 
       if not tailLoop and loopIdx == self.unrollIdx:
@@ -5353,7 +5293,7 @@ class KernelWriterAssembly(KernelWriter):
         evenIterPreCode = Code.Module()
         evenIterCode = Code.Module()
         if not kernel["SuppressNoLoadLoop"] and kernel["ExpandPointerSwap"]:
-          oddIterPreCode.addText("%s: // unroll loop odditer exit\n" % (loopLabelEndOddExit))
+          oddIterPreCode.addCode(loopLabelEndOddExit)
           # In this case we kept the 'no-load' loop which has LDS offsets assuming first bank of LDS
           # if we exit the main loop at an odd iter - need to swap LDS read pointers
           # so the ds_reads read from the 'high' buffer of LDS
@@ -5365,7 +5305,7 @@ class KernelWriterAssembly(KernelWriter):
           if not kernel["DirectToVgprB"]:
             oddIterCode.addText(self.localReadSwapOffsets(kernel, False, self.tPB))
 
-          evenIterPreCode.addText("%s: // unroll loop eveniter exit\n" % (loopLabelEndEvenExit))
+          evenIterPreCode.addCode(loopLabelEndEvenExit)
           # generate even code here (so far, for PrefetchGlobalRead=2 only)
           if kernel["PrefetchGlobalRead"]==2:
             # Generate local write address code only for PrefetchGlobalRead==2 (localWriteSwapOffsets does nothing if DirectToVgpr is enabled)
@@ -5401,12 +5341,12 @@ class KernelWriterAssembly(KernelWriter):
 
         # if secondCode exist, add jump to skip secondCode
         if secondCode.count():
-          kStr += inst("s_branch %s"%loopLabelEnd, \
+          kStr += inst("s_branch %s"%loopLabelEnd.getLabelName(), \
               "exit unroll loop%s (and skip second exit code)"%(loopChar ))
         kStr += str(secondPreCode)
         kStr += str(secondCode)
 
-      kStr += "%s:%s" % (loopLabelEnd, self.endLine)
+      kStr += str(loopLabelEnd)
 
       if tailLoop:
         if len(kernel["ProblemType"]["IndicesSummation"]) > 1:
@@ -5469,7 +5409,7 @@ class KernelWriterAssembly(KernelWriter):
 
   ##############################################################################
   def openLoopCopy(self, kernel, lc):
-    return self.getLabelDef("LoopCopy%u"%(lc+1) )
+    return Code.Label("LoopCopy%u"%(lc+1), "" )
 
   ##############################################################################
   # End Summation
@@ -5477,7 +5417,7 @@ class KernelWriterAssembly(KernelWriter):
   def endSummation(self, kernel, label = None, isOptNLL = False):
     kStr = ""
 
-    kStr += "%s:\n" % (self.getNamedLabelUnique("Summation_End") if label is None else label)
+    kStr += str(Code.Label((self.labels.getUniqueNamePrefix("Summation_End") if label is None else label), ""))
 
     if kernel["StorePriorityOpt"]:
       kStr += inst("s_setprio 0", "optimization store")
@@ -5816,20 +5756,21 @@ class KernelWriterAssembly(KernelWriter):
         if kernel["StorePriorityOpt"]:
           kStr += inst("s_setprio 0", "optimization store")
         if self.doShadowInit:
+          shadowName = Code.Label.getFormatting("ShadowInitStart")
           kStr += inst("s_cbranch_scc1 %s"\
-              % self.getNamedLabel("ShadowInitStart"), \
+              % shadowName, \
               "skip to ShadowInitStart iter b/c numIter==0")
         else:
           loopChar = self.indexChars[ \
               kernel["ProblemType"]["IndicesSummation"][self.unrollIdx]]
-          labelName = self.getNamedLabel("LoopEnd%s"%loopChar)
+          labelName = Code.Label.getFormatting("LoopEnd%s"%loopChar)
           kStr += inst("s_cbranch_scc1 %s" % labelName,
               "skip to unrollLoop end loop%s iter b/c numIter==0" % loopChar)
     elif isOptNLL:
-      skipOptNLL = self.getNamedLabel("OptNLL_End")
+      skipOptNLL = Code.Label("OptNLL_End", "")
       tmpSgpr = self.getTmpSgpr(2).idx()
 
-      kStr += self.checkIsBetaZero(kernel, tmpSgpr, skipOptNLL)
+      kStr += str(self.checkIsBetaZero(kernel, tmpSgpr, skipOptNLL))
 
       # check alpha
       if self.do["ApplyAlpha"]:
@@ -5867,12 +5808,12 @@ class KernelWriterAssembly(KernelWriter):
           kStr += inst("s_mov_b32", sgpr(tmpSgpr+0), "0x00000000", "lsb of real part of 1.0")
           kStr += inst("s_mov_b32", sgpr(tmpSgpr+1), "0x3ff00000", "msb of real part of 1.0")
           kStr += inst("s_cmp_eq_u64", sgpr("Alpha",2), sgpr(tmpSgpr,2), "Alpha.real == 1.0 ?")
-          kStr += inst("s_cbranch_scc0 %s"%skipOptNLL, "branch if alpha.real != 1")
+          kStr += inst("s_cbranch_scc0", skipOptNLL.getLabelName(), "branch if alpha.real != 1")
           kStr += inst("s_mov_b32", sgpr(tmpSgpr+0), "0x00000000", "lsb of imag part of 0.0")
           kStr += inst("s_mov_b32", sgpr(tmpSgpr+1), "0x00000000", "msb of imag part of 0.0")
           kStr += inst("s_cmp_eq_u64", sgpr("Alpha+2",2), sgpr(tmpSgpr,2), "Alpha.imag == 0.0 ?")
 
-        kStr += inst("s_cbranch_scc0 %s"%skipOptNLL, "branch if alpha != 1")
+        kStr += inst("s_cbranch_scc0", skipOptNLL.getLabelName(), "branch if alpha != 1")
         kStr += "\n"
 
       kStr += self.checkIsEdge(kernel, tmpSgpr, skipOptNLL)
@@ -5887,8 +5828,7 @@ class KernelWriterAssembly(KernelWriter):
                   kernel["DepthU"], tmpSgpr+2, 2)
         kStr += inst("s_cmp_eq_u32", sgpr(tmpSgpr+1), \
             hex(0), "numIter%s == 0"%loopChar )
-        kStr += inst("s_cbranch_scc0 %s"%skipOptNLL, \
-            "skip if tail loop required")
+        kStr += inst("s_cbranch_scc0", skipOptNLL.getLabelName(), "skip if tail loop required")
 
       # save the vgprPool for generating the normal path.
       # dump the 'dirty' pool upon s_endpgm and swap back the 'clean' pool
@@ -5930,11 +5870,11 @@ class KernelWriterAssembly(KernelWriter):
     kStr = ""
     if not prefetch:
       if isNGLL:
-        toPGR1 = self.getLabelNum("toPGR1")
-        kStr += "label_%04u:%s" % (toPGR1, self.endLine)
+        toPGR1 = Code.Label(self.labels.getName("toPGR1"), "")
+        kStr += str(toPGR1)
       else:
         if isOptNLL:
-            endSumLabel = self.getNamedLabel("Summation_End_OptNLL")
+            endSumLabel = "Summation_End_OptNLL"
 
             kStr += self.comment1("Stores for OptNLL")
             kStr += self.endSummation(kernel, endSumLabel, isOptNLL)
@@ -5952,14 +5892,10 @@ class KernelWriterAssembly(KernelWriter):
             self.cleanupGlobalWrite(kernel)
             kStr += "\n"
             kStr += str(self.functionEnd(kernel, False))
-            #kStr += inst("s_branch %s"%summationEnd, "skip the OptNLL")
-
-            label = self.getNamedLabel("OptNLL_End")
-            kStr += "%s:%s" % (label, self.endLine)
+            kStr += str(Code.Label("OptNLL_End", ""))
 
         else:
-          label = self.getNamedLabel("PrefetchGlobalLastIterEnd")
-          kStr += "%s:%s" % (label, self.endLine)
+          kStr += str(Code.Label("PrefetchGlobalLastIterEnd", ""))
 
     # swap back vgpr pool if any
     if self.savedVgprPool != None:
@@ -9159,19 +9095,20 @@ class KernelWriterAssembly(KernelWriter):
   # betaLabel is label to branch to if beta != 0
   ##############################################################################
   def checkIsBetaZero(self, kernel, tmpSgpr, betaLabel):
-    kStr = ""
+    module = Code.Module("checkIsBetaZero label %s"%betaLabel)
+    assert(isinstance(betaLabel, Code.Label))
+    betaLabelName = betaLabel.getLabelName()
     if kernel["ProblemType"]["UseBeta"]:
       if self.bpeCinternal <= self.bpr: # 1 register to check for Beta==0
-        kStr += inst("s_cmpk_eq_u32", sgpr("Beta"), hex(0), "Beta == 0")
+        module.addInst("s_cmpk_eq_u32", sgpr("Beta"), hex(0), "Beta == 0")
       else: # multiple registers to check for Beta==0
-        kStr += inst("s_mov_b32", sgpr(tmpSgpr), sgpr("Beta+0"), "tmp = Beta[0]")
+        module.addInst("s_mov_b32", sgpr(tmpSgpr), sgpr("Beta+0"), "tmp = Beta[0]")
         for i in range(1, self.bpeCinternal//self.bpr):
-          kStr += inst("s_or_b32", sgpr(tmpSgpr), sgpr("Beta+%u"%i), sgpr(tmpSgpr), "tmp |= Beta[%u] " % i)
-        kStr += inst("s_cmpk_eq_u32", sgpr(tmpSgpr), hex(0), "Beta == 0")
-      kStr += inst("s_cbranch_scc0 %s" % betaLabel, \
-          "Branch if Beta is not zero")
-      kStr += "\n"
-    return kStr
+          module.addInst("s_or_b32", sgpr(tmpSgpr), sgpr("Beta+%u"%i), sgpr(tmpSgpr), "tmp |= Beta[%u] " % i)
+        module.addInst("s_cmpk_eq_u32", sgpr(tmpSgpr), hex(0), "Beta == 0")
+      module.addInst("s_cbranch_scc0", betaLabelName, "Branch if Beta is not zero")
+    module.addSpaceLine()
+    return module
 
   ##############################################################################
   # checkIsEdge
@@ -9179,6 +9116,8 @@ class KernelWriterAssembly(KernelWriter):
   # isEdgeTarget is the branch target if edges are required
   ##############################################################################
   def checkIsEdge(self, kernel, tmpSgpr, isEdgeTarget):
+    assert(isinstance(isEdgeTarget, Code.Label))
+    isEdgeTargetLabel = isEdgeTarget.getLabelName()
     kStr = ""
     tmpS0  = tmpSgpr
     tmpS1  = tmpS0 + 1
@@ -9210,7 +9149,7 @@ class KernelWriterAssembly(KernelWriter):
       kStr += inst("s_cmpk_gt_u32", sgpr(tmpS0), hex(0), "rMT0 > 0")
       if self.db["ForceEdgeStores"]:
         kStr += inst("s_cmp_eq_u32", sgpr(tmpS0), sgpr(tmpS0), "ForceEdgeStores!")
-      kStr += inst("s_cbranch_scc1 %s" % isEdgeTarget, "jump if edges required")
+      kStr += inst("s_cbranch_scc1", isEdgeTargetLabel, "jump if edges required")
 
     # check edge1 ###
     # TODO-packed - this only needs to change to handle packing into C1 index
@@ -9229,7 +9168,7 @@ class KernelWriterAssembly(KernelWriter):
     # if rMT1 > 0 goto label_B?_E1
     if self.do["EdgeWrite"]:
       kStr += inst("s_cmpk_gt_u32", sgpr(tmpS0), hex(0), "rMT1 > 0")
-      kStr += inst("s_cbranch_scc1 %s" % isEdgeTarget, "jump if edges required")
+      kStr += inst("s_cbranch_scc1", isEdgeTargetLabel, "jump if edges required")
 
     return kStr
 
@@ -9264,12 +9203,12 @@ class KernelWriterAssembly(KernelWriter):
     for beta in betas:
       writeLabels[beta] = {}
       for edge in edges:
-        writeLabels[beta]["EdgeCheck0"] = self.getNamedLabelUnique("GW_B%u_E%u_EdgeCheck0" % ( 1 if beta else 0, 1 if edge else 0) )
-        writeLabels[beta]["EdgeCheck1"] = self.getNamedLabelUnique("GW_B%u_E%u_EdgeCheck1" % ( 1 if beta else 0, 1 if edge else 0) )
-        writeLabels[beta][edge] = self.getNamedLabelUnique("GW_B%u_E%u" % ( 1 if beta else 0, 1 if edge else 0) )
+        writeLabels[beta]["EdgeCheck0"] = Code.Label(self.labels.getNameInc("GW_B%u_E%u_EdgeCheck0" % ( 1 if beta else 0, 1 if edge else 0) ), "")
+        writeLabels[beta]["EdgeCheck1"] = Code.Label(self.labels.getNameInc("GW_B%u_E%u_EdgeCheck1" % ( 1 if beta else 0, 1 if edge else 0) ), "")
+        writeLabels[beta][edge] = Code.Label(self.labels.getNameInc("GW_B%u_E%u" % ( 1 if beta else 0, 1 if edge else 0) ), "")
       if not beta:
-        betaLabel = self.getNamedLabelUnique("GW_Beta")
-    endLabel = self.getNamedLabelUnique("GW_End")
+        betaLabel = Code.Label(self.labels.getNameInc("GW_Beta"), "")
+    endLabel = Code.Label(self.labels.getNameInc("GW_End"), "")
 
     # Layout
     """
@@ -9315,24 +9254,24 @@ class KernelWriterAssembly(KernelWriter):
     tmpSgpr = self.getTmpSgpr(4).idx()
 
     # branch B1 or B0
-    betaLabel = self.getNamedLabelUnique("GW_Beta")
+    betaLabel = Code.Label(self.labels.getNameInc("GW_Beta"), "")
 
     if False in betas and True in betas:
-      kStr += self.checkIsBetaZero(kernel, tmpSgpr, betaLabel)
+      kStr += str(self.checkIsBetaZero(kernel, tmpSgpr, betaLabel))
 
     for beta in betas:
       # start B1
       if beta:
-        kStr += "%s:\n"%(betaLabel)
+        kStr += str(betaLabel)
 
       ########################################
       # branch if Edge0 or Edge1
       if False in edges and True in edges:
-        kStr += self.checkIsEdge(kernel, tmpSgpr, "%s" % writeLabels[beta][True])
+        kStr += self.checkIsEdge(kernel, tmpSgpr, writeLabels[beta][True])
 
       # by now we either jumped to E1 or stayed at E0
       for edge in edges:
-        kStr += "%s:%s"%(writeLabels[beta][edge], self.endLine)
+        kStr += str(writeLabels[beta][edge])
 
         # for storeRemap edge case, non-beta still can enable vector stores
         if kernel["StoreRemapVectorWidth"] and not beta:
@@ -9554,11 +9493,11 @@ class KernelWriterAssembly(KernelWriter):
         del getTmpSgprClass
 
         # TODO - if this is the last tile, don't need to jump to next instruction
-        kStr += inst("s_branch", "label_%s"%endLabel, "jump to end")
+        kStr += inst("s_branch", endLabel.getLabelName(), "jump to end")
         del ss
 
     # End label
-    kStr += "label_%s:%s"%(endLabel, self.endLine)
+    kStr += str(endLabel)
     self.vgprPool.checkIn(tmpVgpr)
     if bf16CVTVgpr is not None:
       self.vgprPool.checkIn(bf16CVTVgpr)
@@ -10147,11 +10086,11 @@ class KernelWriterAssembly(KernelWriter):
       d0 = element[1]
       vc1 = element[2]
       vc0 = element[3]
-      labelString = "Global_Write%s%s_vc=%u,%u_d=%u,%u" \
-        % (" Beta" if beta else "", " Edge" if edge else "", vc0, vc1, d0, d1 )
-      label = self.getLabelNum(labelString)
-      labelString += "EarlyExit"
-      labelAfterAtomicLoop = self.getLabelNum(labelString)
+      labelString = "Global_Write%s%s_%u_%u_%u_%u" % ("_Beta" if beta else "", "_Edge" if edge else "", vc0, vc1, d0, d1 )
+      labelComment = "Global_Write (Beta) (Edge) vc0 vc1 d0 d1"
+      label = Code.Label(self.labels.getName(labelString), labelComment)
+      labelString += "_EarlyExit"
+      labelAfterAtomicLoop = Code.Label(self.labels.getName(labelString), labelComment)
 
       if self.useAtomicAdd:
         ########################################
@@ -10318,11 +10257,11 @@ class KernelWriterAssembly(KernelWriter):
           mask = ss.elementMask[elementIdx]
           kStr += inst("s_or_b{}".format(wavelen), sgpr(tmpS01,laneSGPRC), sgpr(mask,laneSGPRC), sgpr(tmpS01,laneSGPRC), "or to add threads" )
         kStr += inst("s_or_saveexec_b{}".format(wavelen), sgpr(tmpS23,laneSGPRC), sgpr(tmpS01,laneSGPRC), "apply combined mask" )
-        kStr += inst("s_cbranch_execz", "label_%04u" % labelAfterAtomicLoop, "if exec is zero skip loop" )
+        kStr += inst("s_cbranch_execz", labelAfterAtomicLoop.getLabelName(), "if exec is zero skip loop" )
 
         # begin atomic loop
         kStr += self.comment("atomic CAS loop")
-        kStr += "label_%04u:%s" % (label, self.endLine)
+        kStr += str(label)
 
         kStr += self.comment("apply updated masks and issue writes again")
         for elementIdx in range(0, len(batchElements)):
@@ -10412,8 +10351,8 @@ class KernelWriterAssembly(KernelWriter):
 
         # apply combined masks and exit
         kStr += inst("s_or_saveexec_b{}".format(wavelen), sgpr(tmpS23,laneSGPRC), sgpr(tmpS01,laneSGPRC), "apply combined mask" )
-        kStr += inst("s_cbranch_execnz", "label_%04u" % label, "try again if not complete" )
-        kStr += "label_%04u:%s" % (labelAfterAtomicLoop, self.endLine)
+        kStr += inst("s_cbranch_execnz", label.getLabelName(), "try again if not complete" )
+        kStr += str(labelAfterAtomicLoop)
         kStr += inst("s_mov_b{}".format(wavelen), self.exec, -1, "full mask -> exec" )
 
     ########################################
@@ -10455,34 +10394,34 @@ class KernelWriterAssembly(KernelWriter):
         self.globalWriteIfStateLabelSuffixDict[activationLabelSuffix] = 0
       activationCDataType = kernel["ProblemType"]["ComputeDataType"] if kernel["ProblemType"]["ActivationHPA"] else \
                                                                         kernel["ProblemType"]["DestDataType"]
-      activationLabelEnd = "label_Activation_End_%s"%activationLabelSuffix
-      activationLabels = []
+      activationLabelEndModule = Code.Label("Activation_End_%s"%activationLabelSuffix, "")
+      activationLabelModules = []
       activationEnumStrList = []
       if ((kernel["_GlobalAccumulation"] != 'MultipleBuffer') and kernel["ActivationFused"]) and \
         (kernel["ProblemType"]["ActivationType"] != 'none'):
         if kernel["ProblemType"]["ActivationType"] == 'all':
           activationEnumStrList = ActivationType.getEnumStrList(activationCDataType)
           for index, enumStr in enumerate(activationEnumStrList):
-            activationLabel = "label_Activation_%s_%s"% (enumStr.capitalize(), activationLabelSuffix)
-            activationLabels.append(activationLabel)
-          for index, activationLabelStr in enumerate(activationLabels):
+            activationLabelModule = Code.Label("Activation_%s_%s"% (enumStr.capitalize(), activationLabelSuffix), "")
+            activationLabelModules.append(activationLabelModule)
+          for index, activationLabelModule in enumerate(activationLabelModules):
             if index != 0:
               enumIndex = ActivationType.getEnumIndex(activationEnumStrList[index])
               kStr += inst("s_cmpk_eq_u32", sgpr("ActivationType"), enumIndex, "activationType == %u"%enumIndex)
-              kStr += inst("s_cbranch_scc1 %s"%activationLabelStr, "Branch if true")
+              kStr += inst("s_cbranch_scc1", activationLabelModule.getLabelName(), "Branch if true")
         else:
           activationEnumStrList.append(str(kernel["ProblemType"]["ActivationType"]).lower())
       else:
-        activationLabels.append("")
+        activationLabelModules.append("")
         activationEnumStrList.append("none")
       loadsIssuedRestore = loadsIssued
       storesIssuedRestore = storesIssued
-      for index, activationLabelStr in enumerate(activationLabels):
+      for index, activationLabelModule in enumerate(activationLabelModules):
         loadsIssued = loadsIssuedRestore
         storesIssued = storesIssuedRestore
         activationTypeStr = activationEnumStrList[index]
-        if activationLabelStr:
-          kStr += "%s:%s" % (activationLabelStr, self.endLine)
+        if activationLabelModule:
+          kStr += str(activationLabelModule)
 
         if kernel["ProblemType"]["DestDataType"].isBFloat16() and kernel["ProblemType"]["HighPrecisionAccumulate"]:
           kStr += inst("v_mov_b32", vgpr(bf16CVTVgprStruct.vgprBf16Mask), "0xffff0000", "mask for pack two bfloat16 element to 32bit" )
@@ -10688,10 +10627,10 @@ class KernelWriterAssembly(KernelWriter):
             kStr += inst("s_waitcnt_vscnt", "null", "0", "writes")
           kStr += "s_barrier // debug\n"
 
-        if (index < (len(activationLabels) - 1)):
-          kStr += "s_branch %s%s"%(activationLabelEnd, self.endLine)
-      if len(activationLabels) > 1:
-        kStr += "%s:%s"%(activationLabelEnd, self.endLine)
+        if (index < (len(activationLabelModules) - 1)):
+          kStr += inst("s_branch", activationLabelEndModule.getLabelName(), "")
+      if len(activationLabelModules) > 1:
+        kStr += str(activationLabelEndModule)
 
     # return registers to pool:
     lastData = -1
@@ -10731,14 +10670,14 @@ class KernelWriterAssembly(KernelWriter):
     imod = Code.Module()
     loopCounter = self.loopCounter(kernel, self.unrollIdx)
     imod.addInst("s_cmp_eq_u32 %s %s" %(loopCounter, hex(1)),"PGR=2 but only 1 loop")
-    skipPGR2 = self.getLabelNum("skipPGR2")
-    imod.addInst("s_cbranch_scc1 label_%04u" %(skipPGR2),"PGR=2 but only 1 loop")
+    skipPGR2 = Code.Label(self.labels.getName("skipPGR2"), "")
+    imod.addInst("s_cbranch_scc1", skipPGR2.getLabelName(),"PGR=2 but only 1 loop")
     return imod
 
   def closePrefetchGlobalRead2(self, kernel):
     imod = Code.Module()
-    skipPGR2 = self.getLabelNum("skipPGR2")
-    imod.addInst("label_%04u:" % (skipPGR2),"")
+    skipPGR2 = Code.Label(self.labels.getName("skipPGR2"), "")
+    imod.addCode(skipPGR2)
     return imod
 
   def addSumAlphaWithCBeta(self, kernel, ss, gwvw, elementIdx, vc0, atomicAddC, tmpVgpr, bf16CVTVgprStruct):
@@ -10856,7 +10795,7 @@ class KernelWriterAssembly(KernelWriter):
   def functionEnd(self, kernel, addLabel=True):
     imod = Code.Module()
     if addLabel:
-      imod.addCode(Code.Label(self.getLabelNum("KernelEnd"), "KernelEnd"))
+      imod.addCode(Code.Label("KernelEnd", ""))
     imod.addInst("s_endpgm", "Kernel End")
     return imod
 
@@ -10905,31 +10844,31 @@ class KernelWriterAssembly(KernelWriter):
   # generate open code for DirectToVgpr + odd exit case in noLoadLoop code
   ##############################################################################
   def openOddNoLoadLoopForDTV(self, kernel, isNGLL, name):
-    kStr = ""
-    evenStartLabelName = "EvenStart" + name
+    module = Code.Module("openOddNoLoadLoopForDTV")
+    evenStartLabelName = Code.Label.getFormatting("EvenStart" + name)
     # odd exit check code
     # use OrigLoopCounter & 1
     tmpSgpr = self.getTmpSgpr(1).idx()
     #scc0or1 = 0 if isNGLL else 1
     #oddOrEven = "Even" if isNGLL else "Odd"
-    kStr += inst("s_and_b32",sgpr(tmpSgpr), sgpr("OrigLoopCounter"), 1, "test if OrigLoopCounter is Odd ?")
-    kStr += inst("s_cbranch_scc0", self.getLabelTarget(evenStartLabelName), "Skip odd code if OrigLoopCounter is Even")
+    module.addInst("s_and_b32",sgpr(tmpSgpr), sgpr("OrigLoopCounter"), 1, "test if OrigLoopCounter is Odd ?")
+    module.addInst("s_cbranch_scc0", evenStartLabelName, "Skip odd code if OrigLoopCounter is Even")
 
-    return kStr
+    return module
 
   ##############################################################################
   # closeOddNoLoadLoopForDTV
   # generate close code for DirectToVgpr + odd exit case in noLoadLoop code
   ##############################################################################
   def closeOddNoLoadLoopForDTV(self, kernel, isNGLL, name):
-    kStr = ""
-    evenStartLabelName = "EvenStart" + name
-    evenEndLabelName = "EvenEnd" + name
+    module = Code.Module("closeOddNoLoadLoopForDTV")
+    evenStartLabelName = Code.Label.getFormatting("EvenStart" + name)
+    evenEndLabelName = Code.Label.getFormatting("EvenEnd" + name)
     # odd exit code
-    kStr += inst("s_branch", self.getLabelTarget(evenEndLabelName), "Skip even code")
+    module.addInst("s_branch", evenEndLabelName, "Skip even code")
     # generate even start label
-    kStr += self.getLabelDef(evenStartLabelName)
-    return kStr
+    module.addCode(Code.Label(evenStartLabelName, ""))
+    return module
 
   ##############################################################################
   # generateEvenEndLabeNoLoadLoopForDTV
@@ -11080,7 +11019,7 @@ class KernelWriterAssembly(KernelWriter):
         kStr += inst("s_waitcnt", "lgkmcnt(0) & vmcnt(0)", "dump" )
         if self.archCaps["SeparateVscnt"]:
           kStr += inst("s_waitcnt_vscnt", "null", "0", "writes")
-        kStr += self.dump(vgpr(tmp))
+        kStr += str(self.dump(vgpr(tmp)))
       self.vgprPool.checkIn(tmp)
       self.vgprPool.checkIn(tmpAddr)
     return kStr
@@ -11439,33 +11378,35 @@ class KernelWriterAssembly(KernelWriter):
   # Store to Debug Buffer
   ########################################
   def dump(self, vgprStore):
-    kStr = ""
+    module = Code.Module("dump buffer %s"%str(vgprStore))
     if globalParameters["DebugKernel"]:
       afterDump = -1
       if self.db["DebugKernelMaxItems"] != -1:
-        afterDump = self.getUniqLabel()
-        kStr += inst("s_cmp_lt_u32", sgpr("DebugKernelItems"), 16,  "")
-        kStr += inst("s_cbranch_scc0", "label_%04u"%afterDump, \
-                     "skip if already wrote enough work-items" )
-        kStr += inst("s_add_u32", sgpr("DebugKernelItems"), \
-                     sgpr("DebugKernelItems"), \
-                     hex(1), "inc items written" )
+        afterDump = self.labels.getUniqueName()
+        afterDump = Code.Label(afterDump, "skip debug target")
+        module.addInst("s_cmp_lt_u32", sgpr("DebugKernelItems"), 16,  "")
+        module.addInst("s_cbranch_scc0", afterDump.getLabelName(), \
+                       "skip if already wrote enough work-items" )
+        module.addInst("s_add_u32", sgpr("DebugKernelItems"), \
+                       sgpr("DebugKernelItems"), \
+                       hex(1), "inc items written" )
 
-      kStr += inst("_flat_store_b32", vgpr("AddressDbg", 2), \
+      module.addInst("_flat_store_b32", vgpr("AddressDbg", 2), \
           vgprStore, "debug dump store" )
-      kStr += inst("_v_add_co_u32", vgpr("AddressDbg"), self.vcc, vgpr("AddressDbg"), \
+      module.addInst("_v_add_co_u32", vgpr("AddressDbg"), self.vcc, vgpr("AddressDbg"), \
           hex(4), "debug dump inc" )
 
       if self.db["DebugKernelMaxItems"] != -1:
-        kStr += "label_%04u:%s  %s" % (afterDump, "// skip debug target", self.endLine)
+        assert(isinstance(afterDump, Code.Label)) # Dummy guard in case someone remove the if above
+        module.addCode(afterDump)
 
-    return kStr
+    return module
 
   def dumpSgpr(self, sgprStore):
-    kStr = ""
+    module = Code.Module("Dump sgpr %s"%sgprStore)
     if globalParameters["DebugKernel"]:
       tmp = self.vgprPool.checkOut(1,"tmp")
-      kStr += inst("v_mov_b32", vgpr(tmp), sgprStore, "debug dump sgpr store")
-      kStr += self.dump(tmp)
+      module.addInst("v_mov_b32", vgpr(tmp), sgprStore, "debug dump sgpr store")
+      module.addCode(self.dump(tmp))
       self.vgprPool.checkIn(vgpr(tmp))
-    return kStr
+    return module

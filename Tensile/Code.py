@@ -91,6 +91,9 @@ class Module(Item):
       s += "// } %s\n" % self.name
     return s
 
+  def addSpaceLine(self):
+    self.itemList.append(TextBlock("\n"))
+
   def addCode(self, item):
     """
     Add specified item to the list of items in the module.
@@ -297,17 +300,27 @@ class Label (Item):
   """
   Label that can be the target of a jump.
   """
-  def __init__(self, labelNum, comment):
-    self.labelNum = labelNum
+  def __init__(self, label, comment):
+    assert(isinstance(label, int) or isinstance(label, str))
+    self.label = label
     self.comment = comment
 
+  @staticmethod
+  def getFormatting(label):
+    if isinstance(label, int):
+      return "label_%04u" % (label)
+    else:
+      return "label_%s" % (label)
+
+  def getLabelName(self):
+    return Label.getFormatting(self.label)
+
   def __str__(self):
-    t = "label_%04u:" % (self.labelNum)
+    t = self.getLabelName() + ":"
     if self.comment:
       t += "  /// %s" % self.comment
     t += "\n"
     return t
-
 
 class TextBlock(Item):
   """

@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import ShiftVectorComponents
 from ..AsmUtils import inst, vgpr, sgpr, accvgpr, staticMultiply, vectorStaticDivide, vectorStaticRemainder, log2
 
@@ -113,16 +114,17 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
         VWBlockLabels = []
         for i in range(0, glvw): # grvw block
             r = (i+1) % glvw    # r = [1,2,3,...,glvw-1, 0], the last one glvwLabels[glvw-1] stores for r=0 -> no shift
-            label = writer.getLabelNum("ShiftVectorComponents%u_GLVW%u" % (tP["idx"], r) )
+            comment = "end shift0" if i == glvw-1 else ""
+            label = Code.Label(writer.labels.getName("ShiftVectorComponents%u_GLVW%u" % (tP["idx"], r) ), comment)
             glvwLabels.append(label)
             subMBLabels = []
             subVWBlockLabels = []
             for mb in range(0, OutBlocksInMI * matrixInstBCoal * miOuterTTCoal): # unit block of each thread
-                label = writer.getLabelNum("ShiftVectorComponents%u_GLVW%u_BM%u" % (tP["idx"], r, mb))
+                label = Code.Label(writer.labels.getName("ShiftVectorComponents%u_GLVW%u_BM%u" % (tP["idx"], r, mb)), "")
                 subMBLabels.append(label)
                 sub2VWBlockLabels = []
                 for vw in range(0, max(1, allContOutCoal//glvw)): # vw block of glvw
-                    label = writer.getLabelNum("ShiftVectorComponents%u_GLVW%u_BM%u_VW%u" % (tP["idx"], r, mb, vw))
+                    label = Code.Label(writer.labels.getName("ShiftVectorComponents%u_GLVW%u_BM%u_VW%u" % (tP["idx"], r, mb, vw)), "")
                     sub2VWBlockLabels.append(label)
                 subVWBlockLabels.append(sub2VWBlockLabels)
             MBblockLabels.append(subMBLabels)
@@ -196,8 +198,8 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
         kStr += vectorStaticRemainder(dummy, rReg, wgMT, glvw, tmpVgpr, tmpSgpr)
         for r in range(1, glvw):
             kStr += inst("v_cmp_eq_u32", writer.vcc, vgpr(rReg), hex(r), "wgMT%%VW == %u"%r )
-            kStr += inst("s_cbranch_vccnz label_%04u" % glvwLabels[(r-1)], "branch to shift d%u r=%u"%(tP["idx"], r))
-        kStr += inst("s_branch label_%04u"%glvwLabels[glvw-1], "no shifting" )
+            kStr += inst("s_cbranch_vccnz", glvwLabels[(r-1)].getLabelName(), "branch to shift d%u r=%u"%(tP["idx"], r))
+        kStr += inst("s_branch", glvwLabels[glvw-1].getLabelName(), "no shifting" )
         writer.vgprPool.checkIn(rReg)
 
         _, arch2acc = writer.AccToArchMapper(kernel)
@@ -205,22 +207,23 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
         # blocks for handle M_size % vector width
         for r in range(1, glvw):
             kStr += writer.comment3("shift d%u r=%u"%(tP["idx"], r))
-            kStr += "label_%04u:%s" % (glvwLabels[r-1], writer.endLine)
+            kStr += str(glvwLabels[r-1])
             for tt in range(0, miOuterTTCoal):
                 for bm in range(0, matrixInstBCoal):
                     for ob in range(0, OutBlocksInMI):
                         label  = ob + OutBlocksInMI * (bm + matrixInstBCoal * tt)
                         target = ob + OutBlocksInMI * (bm + matrixInstBCoal * miWaveGroupCoal * tt)
                         kStr += inst("v_cmp_eq_u32", writer.vcc, vgpr(mbReg), hex(target), "")
-                        kStr += inst("s_cbranch_vccnz label_%04u" % MBblockLabels[r-1][label], "branch to shift d%u r%u mb%u" % (tP["idx"], r, label))
+                        kStr += inst("s_cbranch_vccnz", MBblockLabels[r-1][label].getLabelName(), "branch to shift d%u r%u mb%u" % (tP["idx"], r, label))
 
         for r in range(1, glvw):
             for mb in range(0, miOuterTTCoal * matrixInstBCoal * OutBlocksInMI):
                 kStr += writer.comment3("shift d%u r=%u mb=%u"%(tP["idx"], r, mb))
-                kStr += "label_%04u: // r%u mb%u %s" % (MBblockLabels[r-1][mb], r, mb, writer.endLine)
+                MBblockLabels[r-1][mb].comment = "r%u mb%u"%(r, mb)
+                kStr += str(MBblockLabels[r-1][mb])
                 for vw in range(0, max(1, allContOutCoal//glvw)):
                     kStr += inst("v_cmp_eq_u32", writer.vcc, vgpr(vwReg), hex(vw), "")
-                    kStr += inst("s_cbranch_vccnz label_%04u" % VWBlockLabels[r-1][mb][vw], "branch to shift d%u r%u mb%u vw%u" % (tP["idx"], r, mb, vw))
+                    kStr += inst("s_cbranch_vccnz", VWBlockLabels[r-1][mb][vw], "branch to shift d%u r%u mb%u vw%u" % (tP["idx"], r, mb, vw))
 
         # blocks for handle M_size % vector width
         tReg  = writer.vgprPool.checkOut(min(glvw, allContOutCoal))
@@ -231,7 +234,8 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
                         mb = ob + OutBlocksInMI * (bm + matrixInstBCoal * tt)
                         for vw in range(0, max(1, allContOutCoal//glvw)):
                             kStr += writer.comment3("shift d%u r=%u mb=%u vw%d"%(tP["idx"], r, mb, vw))
-                            kStr += "label_%04u: // r%u mb%u vw%u %s" % (VWBlockLabels[r-1][mb][vw], r, mb, vw, writer.endLine)
+                            VWBlockLabels[r-1][mb][vw].comment = "r%u mb%u vw%u"%(r, mb, vw)
+                            kStr += str(VWBlockLabels[r-1][mb][vw])
                             kStr += inst("s_mov_b32", sgpr(tmpSgpr), (((ob*subMBShapeCoal + bm*MBShapeCoal + tt*WGShapeCoal) // glvw) + vw), "")
                             kStr += inst("v_cmpx_eq_u32", sgpr(tmpSgpr, writer.laneSGPRCount), vgpr(gbReg), sgpr(tmpSgpr), "is thread in edge glvw region" )
                             kStr += inst("v_and_b32", vgpr(tmpVgpr), kernel["WavefrontSize"]-1, vgpr("Serial"), "permute register between threads")
@@ -275,10 +279,10 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
                             all1mask = "0xFFFFFFFF" if (kernel["WavefrontSize"] == 32) else "0xFFFFFFFFFFFFFFFF"
                             kStr += inst("s_mov_b{}".format(kernel["WavefrontSize"]), sgpr(tmpSgpr, writer.laneSGPRCount), all1mask, "to restore all threads active")
                             kStr += inst("s_or_saveexec_b{}".format(kernel["WavefrontSize"]), writer.vcc, sgpr(tmpSgpr,writer.laneSGPRCount), "all threads active")
-                            kStr += inst("s_branch label_%04u" % glvwLabels[glvw-1], "done shifting" )
+                            kStr += inst("s_branch", glvwLabels[glvw-1].getLabelName(), "done shifting" )
                             kStr += writer.endLine
 
-        kStr += "label_%04u: // end shift0%s" % (glvwLabels[glvw-1], writer.endLine)
+        kStr += str(glvwLabels[glvw-1])
         writer.vgprPool.checkIn(tReg)
 
         # checkin scratch vgprs
