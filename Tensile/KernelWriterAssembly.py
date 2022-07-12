@@ -9347,7 +9347,7 @@ class KernelWriterAssembly(KernelWriter):
         # Calculate Vgprs for Write Batching
         ########################################
 
-        self.ss = self.StoreState(self, kernel, gwvw, edge, beta, atomic, elements[edgeI])
+        ss = self.StoreState(self, kernel, gwvw, edge, beta, atomic, elements[edgeI])
 
         # how many vgprs are needed for zero elements
         # 2 for addressC in vgpr for addition - already checked out
@@ -9360,11 +9360,11 @@ class KernelWriterAssembly(KernelWriter):
         #  - if beta gwvw*rpe for new value
         #  - if atomic 2*rpe for old and cmp values
 
-        # print("numVgprsPerAddr=%u, numVgprsPerDataPerVI=%u, numVgprPerValuC=%u"%(self.ss.cfg.numVgprsPerAddr, self.ss.cfg.numVgprsPerDataPerVI, self.ss.cfg.numVgprPerValuC))
-        numVgprsPerElement = self.ss.cfg.numVgprPerValuC*gwvw + self.ss.cfg.numVgprsPerAddr + int(ceil(self.ss.cfg.numVgprsPerDataPerVI * gwvw))
+        # print("numVgprsPerAddr=%u, numVgprsPerDataPerVI=%u, numVgprPerValuC=%u"%(ss.cfg.numVgprsPerAddr, ss.cfg.numVgprsPerDataPerVI, ss.cfg.numVgprPerValuC))
+        numVgprsPerElement = ss.cfg.numVgprPerValuC*gwvw + ss.cfg.numVgprsPerAddr + int(ceil(ss.cfg.numVgprsPerDataPerVI * gwvw))
 
         if kernel["GroupLoadStore"] and kernel["ProblemType"]["UseBeta"]:
-          numVgprsPerElement += self.ss.cfg.numVgprsPerAddr
+          numVgprsPerElement += ss.cfg.numVgprsPerAddr
 
         #print self.vgprPool.state()
         # Use VGPR up to next occupancy threshold:
@@ -9379,12 +9379,12 @@ class KernelWriterAssembly(KernelWriter):
             self.vgprPool.checkIn(t)
         align = 1
         # align adjustment
-        if self.ss.cfg.numVgprsPerAddr > 1:
-          align = max(align, self.ss.cfg.numVgprsPerAddr)
-        if self.ss.cfg.numVgprPerValuC*gwvw > 1:
-          align = max(align, self.ss.cfg.numVgprPerValuC*gwvw)
-        if int(ceil(self.ss.cfg.numVgprsPerDataPerVI * gwvw)) > 1:
-          align = max(align, int(ceil(self.ss.cfg.numVgprsPerDataPerVI * gwvw)))
+        if ss.cfg.numVgprsPerAddr > 1:
+          align = max(align, ss.cfg.numVgprsPerAddr)
+        if ss.cfg.numVgprPerValuC*gwvw > 1:
+          align = max(align, ss.cfg.numVgprPerValuC*gwvw)
+        if int(ceil(ss.cfg.numVgprsPerDataPerVI * gwvw)) > 1:
+          align = max(align, int(ceil(ss.cfg.numVgprsPerDataPerVI * gwvw)))
         numVgprAvailable = self.vgprPool.availableBlock(numVgprsPerElement, align)
 
         # Grow the register pool if needed - we need enough regs for at least one element
@@ -9420,7 +9420,7 @@ class KernelWriterAssembly(KernelWriter):
                     "numVgprsPerElement=", numVgprsPerElement, "atomic=", atomic, \
                     "beta=", beta, "gwvw=", gwvw)
           elif gwvw != gwvwOrig:
-            self.ss.gwvw = gwvw # make both representations consistent
+            ss.gwvw = gwvw # make both representations consistent
             if shrinkDb:
               print2("info: %s shrank gwvw from %u to %u but kept occupancy same=%u." \
                   % (self.kernelName, gwvwOrig, gwvw, currentOccupancy))
@@ -9451,10 +9451,10 @@ class KernelWriterAssembly(KernelWriter):
         numElementsPerBatch = numElementsPerBatch if not kernel["NumElementsPerBatchStore"] else min(kernel["NumElementsPerBatchStore"],numElementsPerBatch)
 
         if shrinkDb:
-          print("NumElementsPerBatch=", numElementsPerBatch, "LimitedBySgprs=", self.ss.cfg.numElementsPerBatchLimitedBySgprs, \
-              "WARNING" if self.ss.cfg.numElementsPerBatchLimitedBySgprs < numElementsPerBatch else "okay")
-        if self.ss.cfg.numElementsPerBatchLimitedBySgprs < numElementsPerBatch:
-          numElementsPerBatch = self.ss.cfg.numElementsPerBatchLimitedBySgprs
+          print("NumElementsPerBatch=", numElementsPerBatch, "LimitedBySgprs=", ss.cfg.numElementsPerBatchLimitedBySgprs, \
+              "WARNING" if ss.cfg.numElementsPerBatchLimitedBySgprs < numElementsPerBatch else "okay")
+        if ss.cfg.numElementsPerBatchLimitedBySgprs < numElementsPerBatch:
+          numElementsPerBatch = ss.cfg.numElementsPerBatchLimitedBySgprs
 
         # TODO: Which of DataType or DestDataType is in a better sense? 0114: Check Using DestDataType + HSS
         if (kernel["ProblemType"]["DataType"].isHalf() or kernel["ProblemType"]["DataType"].isBFloat16()):
@@ -9475,7 +9475,7 @@ class KernelWriterAssembly(KernelWriter):
         assert numElementsPerBatch > 0, "numElementsPerBatch=0 for %s"%self.kernelName
 
         #numElementsPerBatch=min(2,numElementsPerBatch) # hack to control number of batches
-        if atomic and (self.ss.optSingleColVgpr or self.ss.optSharedColVgpr):
+        if atomic and (ss.optSingleColVgpr or ss.optSharedColVgpr):
           # hack to avoid re-using address vgpr across rows
           # atomics need to perform several memory operations
           # if the batch spans multiple rows, need multiple address vgpr
@@ -9503,15 +9503,15 @@ class KernelWriterAssembly(KernelWriter):
         #  numElementsPerBatch = numVectorsPerBatch * kernel["GlobalWriteVectorWidth"]
         numBatches = max(1, ceil_divide(len(elements[edgeI]),numElementsPerBatch))
 
-        numSgprs = self.ss.cfg.numTempSgprPerBatch + self.ss.cfg.numMaskSgprPerBatch + self.ss.cfg.numMaskSgprPerElement * numElementsPerBatch
+        numSgprs = ss.cfg.numTempSgprPerBatch + ss.cfg.numMaskSgprPerBatch + ss.cfg.numMaskSgprPerElement * numElementsPerBatch
 
         if self.db["PrintStoreRegisterDb"]:
           print("edgeI", edgeI, "NumBatches", numBatches, "NumElementsPerBatch", numElementsPerBatch, "numVgprsPerElement", numVgprsPerElement, "len(elements[edgeI])", len(elements[edgeI]))
-          print ("numSgprs=", numSgprs, "sgprPool.size()=", self.sgprPool.size(), "numTempSgprPerBatch=", self.ss.cfg.numTempSgprPerBatch,
-                 "numMaskSgprPerBatch=", self.ss.cfg.numMaskSgprPerBatch, "numMaskSgprPerElement=", self.ss.cfg.numMaskSgprPerElement)
+          print ("numSgprs=", numSgprs, "sgprPool.size()=", self.sgprPool.size(), "numTempSgprPerBatch=", ss.cfg.numTempSgprPerBatch,
+                 "numMaskSgprPerBatch=", ss.cfg.numMaskSgprPerBatch, "numMaskSgprPerElement=", ss.cfg.numMaskSgprPerElement)
           print(self.sgprPool.state())
         kStr += self.comment("edge=%d, allocate %u sgpr. perBatchTmpS=%u perBatchMaskS=%u perElementMaskS=%u elementsPerBatch=%u" %
-            (edgeI, numSgprs, self.ss.cfg.numTempSgprPerBatch, self.ss.cfg.numMaskSgprPerBatch, self.ss.cfg.numMaskSgprPerElement, numElementsPerBatch))
+            (edgeI, numSgprs, ss.cfg.numTempSgprPerBatch, ss.cfg.numMaskSgprPerBatch, ss.cfg.numMaskSgprPerElement, numElementsPerBatch))
         #kStr += "// storeStats, %d, %d, %d\n"% (edgeI, numSgprs, numElementsPerBatch)
         # so if we don't have *GPR resources to handle a larger batch then need
         # to mark overflowedResources rather than generate a kernel that won't work.
@@ -9519,7 +9519,7 @@ class KernelWriterAssembly(KernelWriter):
         getTmpSgprClass = self.getTmpSgpr(numSgprs, 2)
         tmpSgpr = getTmpSgprClass.idx()
 
-        elementSgprs = tmpSgpr + self.ss.cfg.numTempSgprPerBatch
+        elementSgprs = tmpSgpr + ss.cfg.numTempSgprPerBatch
 
         codeAccVgprRead = deepcopy(self.codeAccVgprRead) if self.serializedStore else None
         codeMulAlpha    = deepcopy(self.codeMulAlpha) if self.serializedStore else None
@@ -9546,7 +9546,7 @@ class KernelWriterAssembly(KernelWriter):
             #Indication if this batch is last batch for this column block shape
             self.StoreRemapLastBatch = 1 if (batchIdx+1) % nBatchesPerRow == 0 else 0
 
-          kStr += self.globalWriteBatch(kernel, activation, self.ss, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
+          kStr += self.globalWriteBatch(kernel, activation, ss, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
               elementsThisBatch, self.coord0, self.coord1, self.addrD, self.addrC, \
               tmpVgpr, bf16CVTVgprStruct, \
               elementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, isOptNLL)
@@ -9555,7 +9555,7 @@ class KernelWriterAssembly(KernelWriter):
 
         # TODO - if this is the last tile, don't need to jump to next instruction
         kStr += inst("s_branch", "label_%s"%endLabel, "jump to end")
-        del self.ss
+        del ss
 
     # End label
     kStr += "label_%s:%s"%(endLabel, self.endLine)
@@ -10535,96 +10535,8 @@ class KernelWriterAssembly(KernelWriter):
               if not atomicAddC:
                 kStr += inst("s_waitcnt", "vmcnt(%u)"%vmcnt, "wait C (interleaved) " + vmComment)
 
-            for vi in range(0, gwvw):
-              dataV = ss.elementData[elementIdx] + int(vi*ss.cfg.numVgprsPerDataPerVI)
-              sumIdxV = ss.elementSumIdx[elementIdx] + vi
-              if kernel["ProblemType"]["DestDataType"].isHalf():
-                if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
-                  if sumIdxV%2==0 or (not self.ss.cfg.halfDataRegPerVI and gwvw==1):
-                    # dataV+0 = new c = old c*beta
-                    kStr += inst("v_pk_mul_f16", vgpr(dataV), sgpr("Beta"), vgpr(dataV+0), \
-                        "%s = C*beta ei=%u vi=%u"%(vgpr(dataV),elementIdx, vi))
-                    # dataV+0 = new c = old c*beta + rC
-                    kStr += inst("v_pk_add_f16", vgpr("ValuC+%u"%(sumIdxV//2)), vgpr(dataV), vgpr("ValuC+%u"%(sumIdxV//2)), \
-                        "sum*alpha + C*beta")
-                  else:
-                    pass # add will have been done previously
-                else: # HPA
-                  # dataV+0 = new c = old c*beta + rC
-                  # src0 = beta = f32 = opsel 00
-                  # src1 = dataV = f16.lo = opsel 10 or 11 depending on even/odd
-                  # src2 = sumIdxV = f32 = opsel 00
-                  dataCExternal = ss.elementData[elementIdx] + vi//2
-                  hi16 = (vi + gwvw*vc0) % 2
-                  kStr += inst(self.mixinst, vgpr("ValuC+%u"%sumIdxV), sgpr("Beta"), \
-                      vgpr(dataCExternal), vgpr("ValuC+%u"%sumIdxV), \
-                      "op_sel:[0,%u,0] op_sel_hi:[0,1,0]" % (hi16), \
-                      "//C*=beta")
-
-              elif kernel["ProblemType"]["DestDataType"].isBFloat16():
-                if kernel["ProblemType"]["HighPrecisionAccumulate"]:
-                  # dataV+0 = new c = old c*beta + rC
-                  # src0 = beta = f32 = opsel 00
-                  # src1 = dataV = f16.lo = opsel 10 or 11 depending on even/odd
-                  # src2 = sumIdxV = f32 = opsel 00
-                  dataCExternal = ss.elementData[elementIdx] + vi//2
-                  if (vi%2) == 1:
-                    kStr += inst("v_and_b32", vgpr(tmpVgpr), vgpr(dataCExternal), vgpr(bf16CVTVgprStruct.vgprBf16Mask), "convert bf16 to fp32")
-                  else:
-                    kStr += inst("v_lshlrev_b32", vgpr(tmpVgpr), "16", vgpr(dataCExternal), "convert bf16 to fp32" )
-                  kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%sumIdxV), vgpr(tmpVgpr), sgpr("Beta"), \
-                      "finalSum = sum*alpha + C*beta")
-              elif kernel["ProblemType"]["DestDataType"].isSingle():
-                kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%sumIdxV), vgpr(dataV+0), sgpr("Beta"), \
-                    "finalSum = sum*alpha + C*beta")
-
-              elif kernel["ProblemType"]["DestDataType"].isInt8():
-                if kernel["ProblemType"]["HighPrecisionAccumulate"]:
-                  assert (gwvw % 4 == 0)
-                  if (vi%4) != 3:
-                    tmpC = tmpVgpr
-                    kStr += inst("v_bfe_i32", vgpr(tmpC), vgpr(dataV+0), (vi * 8), 8, "int8 to int32")
-                  else:
-                    tmpC = dataV+0
-                    kStr += inst("v_ashrrev_i32_e32", vgpr(dataV+0), 24, vgpr(dataV+0), "int8 to int32")
-                  kStr += inst("v_mul_lo_u32", vgpr(tmpC), sgpr("Beta"), vgpr(tmpC), \
-                      "C = C*beta")
-                  kStr += inst("_v_add_u32", vgpr("ValuC+%u"%sumIdxV), vgpr(tmpC), vgpr("ValuC+%u"%sumIdxV), \
-                      "finalSum = sum*alpha + C*beta")
-
-              elif kernel["ProblemType"]["DestDataType"].isInt32():
-                # assume we will need to replace v_mac_f32 with v_add_u32 and s_mul_lo_i32
-                # v_mad_i32_i24
-                # kStr += inst("v_mad_i32_i24", vgpr("ValuC+%u"%sumIdxV), vgpr(dataV+0), sgpr("Beta"), vgpr("ValuC+%u"%sumIdxV), \
-                #     "finalSum = sum*alpha + C*beta")
-                kStr += inst("v_mul_lo_u32", vgpr(dataV+0), sgpr("Beta"), vgpr(dataV+0), \
-                    "C = C*beta")
-                kStr += inst("_v_add_u32", vgpr("ValuC+%u"%sumIdxV), vgpr(dataV+0), vgpr("ValuC+%u"%sumIdxV), \
-                    "finalSum = sum*alpha + C*beta")
-
-              elif kernel["ProblemType"]["DestDataType"].isDouble():
-                # dataV+0 = new c = old c*beta
-                if not atomicAddC:
-                  kStr += inst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*2),2), vgpr(dataV+0,2), sgpr("Beta",2), vgpr("ValuC+%u"%(sumIdxV*2),2), \
-                      "finalSum = sum*alpha + C*beta")
-
-              # single precision complex
-              elif kernel["ProblemType"]["DestDataType"].isSingleComplex():
-                kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2)), vgpr(dataV+0), sgpr("Beta"), "finalSum Cr += old Cr * Br")
-                kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2)), vgpr(dataV+1), "-"+sgpr("Beta+1"), "finalSum Cr += old Ci * -Bi")
-                kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2+1)), vgpr(dataV+1), sgpr("Beta"), "finalSum Ci += old Ci * Br")
-                kStr += inst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2+1)), vgpr(dataV+0), sgpr("Beta+1"), "finalSum Ci += old Cr * Bi")
-
-              # double precision complex
-              elif kernel["ProblemType"]["DestDataType"].isDoubleComplex():
-                # c.real += a.real * b.real
-                kStr += "v_fma_f64 %s, %s, %s, %s%s" % (vgpr("ValuC+%u"%(sumIdxV*4+0),2), vgpr(dataV+0,2), sgpr("Beta+0",2), vgpr("ValuC+%u"%(sumIdxV*4+0),2), self.endLine)
-                # c.real -= a.imag * b.imag
-                kStr += "v_fma_f64 %s, %s, -%s, %s%s" % (vgpr("ValuC+%u"%(sumIdxV*4+0),2), vgpr(dataV+2,2), sgpr("Beta+2",2), vgpr("ValuC+%u"%(sumIdxV*4+0),2), self.endLine)
-                # c.imag += a.real * b.imag
-                kStr += "v_fma_f64 %s, %s, %s, %s%s" % (vgpr("ValuC+%u"%(sumIdxV*4+2),2), vgpr(dataV+0,2), sgpr("Beta+2",2), vgpr("ValuC+%u"%(sumIdxV*4+2),2), self.endLine)
-                # c.imag += a.imag * b.real
-                kStr += "v_fma_f64 %s, %s, %s, %s%s" % (vgpr("ValuC+%u"%(sumIdxV*4+2),2), vgpr(dataV+2,2), sgpr("Beta+0",2), vgpr("ValuC+%u"%(sumIdxV*4+2),2), self.endLine)
+            addSumAlphaWithCBetaModule = self.addSumAlphaWithCBeta(kernel, ss, gwvw, elementIdx, vc0, atomicAddC, tmpVgpr, bf16CVTVgprStruct)
+            kStr += str(addSumAlphaWithCBetaModule)
 
           SaturateTypeInt8 = SaturateCastType.NORMAL
           # Activation
@@ -10797,8 +10709,8 @@ class KernelWriterAssembly(KernelWriter):
           self.vgprPool.checkIn(data)
         lastData = data
 
-    self.ss.firstBatch = False
-    self.ss.checkInTempVgprC()
+    ss.firstBatch = False
+    ss.checkInTempVgprC()
     if kernel["StoreRemapVectorWidth"]:
       if self.StoreRemapLastBatch == 1:
         kStr += self.comment("Handle local read and global write")
@@ -10828,6 +10740,96 @@ class KernelWriterAssembly(KernelWriter):
     skipPGR2 = self.getLabelNum("skipPGR2")
     imod.addInst("label_%04u:" % (skipPGR2),"")
     return imod
+
+  def addSumAlphaWithCBeta(self, kernel, ss, gwvw, elementIdx, vc0, atomicAddC, tmpVgpr, bf16CVTVgprStruct):
+    module = Code.Module("sum*alpha + C*beta")
+    for vi in range(0, gwvw):
+      dataV = ss.elementData[elementIdx] + int(vi*ss.cfg.numVgprsPerDataPerVI)
+      sumIdxV = ss.elementSumIdx[elementIdx] + vi
+      if kernel["ProblemType"]["DestDataType"].isHalf():
+        if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
+          if sumIdxV%2==0 or (not ss.cfg.halfDataRegPerVI and gwvw==1):
+            # dataV+0 = new c = old c*beta
+            module.addInst("v_pk_mul_f16", vgpr(dataV), sgpr("Beta"), vgpr(dataV+0), \
+                "%s = C*beta ei=%u vi=%u"%(vgpr(dataV),elementIdx, vi))
+            # dataV+0 = new c = old c*beta + rC
+            module.addInst("v_pk_add_f16", vgpr("ValuC+%u"%(sumIdxV//2)), vgpr(dataV), vgpr("ValuC+%u"%(sumIdxV//2)), \
+                "sum*alpha + C*beta")
+          else:
+            pass # add will have been done previously
+        else: # HPA
+          # dataV+0 = new c = old c*beta + rC
+          # src0 = beta = f32 = opsel 00
+          # src1 = dataV = f16.lo = opsel 10 or 11 depending on even/odd
+          # src2 = sumIdxV = f32 = opsel 00
+          dataCExternal = ss.elementData[elementIdx] + vi//2
+          hi16 = (vi + gwvw*vc0) % 2
+          module.addInst(self.mixinst, vgpr("ValuC+%u"%sumIdxV), sgpr("Beta"), \
+              vgpr(dataCExternal), vgpr("ValuC+%u"%sumIdxV), \
+              "op_sel:[0,%u,0] op_sel_hi:[0,1,0]" % (hi16), \
+              "//C*=beta")
+
+      elif kernel["ProblemType"]["DestDataType"].isBFloat16():
+        if kernel["ProblemType"]["HighPrecisionAccumulate"]:
+          # dataV+0 = new c = old c*beta + rC
+          # src0 = beta = f32 = opsel 00
+          # src1 = dataV = f16.lo = opsel 10 or 11 depending on even/odd
+          # src2 = sumIdxV = f32 = opsel 00
+          dataCExternal = ss.elementData[elementIdx] + vi//2
+          if (vi%2) == 1:
+            module.addInst("v_and_b32", vgpr(tmpVgpr), vgpr(dataCExternal), vgpr(bf16CVTVgprStruct.vgprBf16Mask), "convert bf16 to fp32")
+          else:
+            module.addInst("v_lshlrev_b32", vgpr(tmpVgpr), "16", vgpr(dataCExternal), "convert bf16 to fp32" )
+          module.addInst("_v_mac_f32", vgpr("ValuC+%u"%sumIdxV), vgpr(tmpVgpr), sgpr("Beta"), \
+              "finalSum = sum*alpha + C*beta")
+      elif kernel["ProblemType"]["DestDataType"].isSingle():
+        module.addInst("_v_mac_f32", vgpr("ValuC+%u"%sumIdxV), vgpr(dataV+0), sgpr("Beta"), \
+            "finalSum = sum*alpha + C*beta")
+
+      elif kernel["ProblemType"]["DestDataType"].isInt8():
+        if kernel["ProblemType"]["HighPrecisionAccumulate"]:
+          assert (gwvw % 4 == 0)
+          if (vi%4) != 3:
+            tmpC = tmpVgpr
+            module.addInst("v_bfe_i32", vgpr(tmpC), vgpr(dataV+0), (vi * 8), 8, "int8 to int32")
+          else:
+            tmpC = dataV+0
+            module.addInst("v_ashrrev_i32_e32", vgpr(dataV+0), 24, vgpr(dataV+0), "int8 to int32")
+          module.addInst("v_mul_lo_u32", vgpr(tmpC), sgpr("Beta"), vgpr(tmpC), \
+              "C = C*beta")
+          module.addInst("_v_add_u32", vgpr("ValuC+%u"%sumIdxV), vgpr(tmpC), vgpr("ValuC+%u"%sumIdxV), \
+              "finalSum = sum*alpha + C*beta")
+
+      elif kernel["ProblemType"]["DestDataType"].isInt32():
+        # assume we will need to replace v_mac_f32 with v_add_u32 and s_mul_lo_i32
+        # v_mad_i32_i24
+        # module.addInst("v_mad_i32_i24", vgpr("ValuC+%u"%sumIdxV), vgpr(dataV+0), sgpr("Beta"), vgpr("ValuC+%u"%sumIdxV), \
+        #     "finalSum = sum*alpha + C*beta")
+        module.addInst("v_mul_lo_u32", vgpr(dataV+0), sgpr("Beta"), vgpr(dataV+0), \
+            "C = C*beta")
+        module.addInst("_v_add_u32", vgpr("ValuC+%u"%sumIdxV), vgpr(dataV+0), vgpr("ValuC+%u"%sumIdxV), \
+            "finalSum = sum*alpha + C*beta")
+
+      elif kernel["ProblemType"]["DestDataType"].isDouble():
+        # dataV+0 = new c = old c*beta
+        if not atomicAddC:
+          module.addInst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*2),2), vgpr(dataV+0,2), sgpr("Beta",2), vgpr("ValuC+%u"%(sumIdxV*2),2), \
+              "finalSum = sum*alpha + C*beta")
+
+      # single precision complex
+      elif kernel["ProblemType"]["DestDataType"].isSingleComplex():
+        module.addInst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2)), vgpr(dataV+0), sgpr("Beta"), "finalSum Cr += old Cr * Br")
+        module.addInst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2)), vgpr(dataV+1), "-"+sgpr("Beta+1"), "finalSum Cr += old Ci * -Bi")
+        module.addInst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2+1)), vgpr(dataV+1), sgpr("Beta"), "finalSum Ci += old Ci * Br")
+        module.addInst("_v_mac_f32", vgpr("ValuC+%u"%(sumIdxV*2+1)), vgpr(dataV+0), sgpr("Beta+1"), "finalSum Ci += old Cr * Bi")
+
+      # double precision complex
+      elif kernel["ProblemType"]["DestDataType"].isDoubleComplex():
+        module.addInst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*4+0),2), vgpr(dataV+0,2), sgpr("Beta+0",2), vgpr("ValuC+%u"%(sumIdxV*4+0),2), "c.real += a.real * b.real")
+        module.addInst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*4+0),2), vgpr(dataV+2,2), sgpr("Beta+2",2), vgpr("ValuC+%u"%(sumIdxV*4+0),2), "c.real -= a.imag * b.imag")
+        module.addInst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*4+2),2), vgpr(dataV+0,2), sgpr("Beta+2",2), vgpr("ValuC+%u"%(sumIdxV*4+2),2), "c.imag += a.real * b.imag")
+        module.addInst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*4+2),2), vgpr(dataV+2,2), sgpr("Beta+0",2), vgpr("ValuC+%u"%(sumIdxV*4+2),2), "c.imag += a.imag * b.real")
+    return module
 
   ########################################
   # Activation related
