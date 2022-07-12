@@ -356,7 +356,7 @@ class Inst(Item):
     self.name   = self.inst
     self.params = ""
     if len(params) > 1:
-      self.params = list(params[1:])
+      self.params = list(param for param in params[1:] if param != "")
     self.outputInlineAsm = False
 
   def setInlineAsmPrintMode(self, mode):
