@@ -6524,7 +6524,7 @@ class KernelWriterAssembly(KernelWriter):
       # PrefetchGlobalRead=2 case, generate local read wait for DirectToLds
       if kernel["PrefetchGlobalRead"]==2:
         # do not generate local read wait for PGR=2
-        DtldsModule.addText(self.comment1("before DirectToLds load, ensure prior ds_reads have finished"))
+        DtldsModule.addComment0("before DirectToLds load, ensure prior ds_reads have finished")
         DtldsModule.addText("s_waitcnt lgkmcnt(0)" + self.endLine)
         if not kernel["NoLdsWriteCode"]:
           if usePlaceHolder:
@@ -6578,7 +6578,7 @@ class KernelWriterAssembly(KernelWriter):
 
     if tc == tc1st and (kernel["DirectToLdsA"] or kernel["DirectToLdsB"]) and not kernel["PrefetchGlobalRead"]==2:
       # generate local read wait for DirectToLds except for PrefetchGlobalRead=2 (for PGR=2, generate wait after m0 value setting)
-      imod.header.addText(self.comment1("before DirectToLds load, ensure prior ds_reads have finished"))
+      imod.header.addComment0("before DirectToLds load, ensure prior ds_reads have finished")
       if (kernel["DirectToVgprA"] or kernel["DirectToVgprB"]): # do not generate sync here if DirectToVgpr is enabled
         imod.header.addText("s_waitcnt lgkmcnt(0)" + self.endLine)
       else:
@@ -7028,9 +7028,9 @@ class KernelWriterAssembly(KernelWriter):
     LWDoMod = imod.addCode(Code.Module())
     LWDoA = self.localWriteDo(kernel, tPA)
     LWDoB = self.localWriteDo(kernel, tPB)
-    LWDoMod.addText(self.comment("local write a"))
+    LWDoMod.addComment1("local write a")
     LWDoMod.addCode(LWDoA)
-    LWDoMod.addText(self.comment("local write b"))
+    LWDoMod.addComment1("local write b")
     LWDoMod.addCode(LWDoB)
     return imod
 
@@ -9414,8 +9414,8 @@ class KernelWriterAssembly(KernelWriter):
       tmpVgpr, bf16CVTVgprStruct, batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, isOptNLL):
     module = Code.Module("Atomic") if atomic else Code.Module("Non atomic")
 
-    module.addText(self.comment1("optSingleColVgpr=%u optSharedColVgpr=%u optSGPRUsage=%s optSrdIncForRow=%u" % \
-              (ss.optSingleColVgpr, ss.optSharedColVgpr, ss.optSGPRUsage, ss.optSrdIncForRow)))
+    module.addComment0("optSingleColVgpr=%u optSharedColVgpr=%u optSGPRUsage=%s optSrdIncForRow=%u" % \
+              (ss.optSingleColVgpr, ss.optSharedColVgpr, ss.optSGPRUsage, ss.optSrdIncForRow))
 
     if kernel["StoreSyncOpt"]:
       module.addInst("s_sleep", "%d" % (kernel["StoreSyncOpt"]-1), "optimization: sync and wait")
@@ -9439,7 +9439,7 @@ class KernelWriterAssembly(KernelWriter):
          ":vaw:%u"%atomicW if atomic else "")
       if elementIdx < len(batchElements)-1:
         commentStr += "; "
-    module.addText(self.comment3(commentStr))
+    module.addComment2(commentStr)
     # print(self.kernelName)
     # print(commentStr)
 
@@ -9456,7 +9456,7 @@ class KernelWriterAssembly(KernelWriter):
 
     ########################################
     # calculate addr and masks
-    module.addText(self.comment("calc coords, apply mask, and issue loads (if necessary)"))
+    module.addComment1("calc coords, apply mask, and issue loads (if necessary)")
     # On input, coord0 and coord1 are VGPRs computed in the pre-batch code, based
     # on the thread and tid number.  These are ELEMENT offsets from start of tensor C
     # for the top-left corner this thread will write.  These are not changed
@@ -9584,7 +9584,7 @@ class KernelWriterAssembly(KernelWriter):
     ########################################
     # rC *= alpha
     if not kernel["InterleaveAlpha"] and applyAlpha and not self.alphaBeforeLoadC:
-      module.addText(self.comment("rC *= alpha batchElements=%s"%batchElements))
+      module.addComment1("rC *= alpha batchElements=%s"%batchElements)
       if codeMulAlpha is None:
         for elementIdx in range(0, len(batchElements)):
           module.addCode(self.applyAlpha(kernel, gwvw, ss.elementSumIdx, elementIdx, tmpS01))
@@ -9637,7 +9637,7 @@ class KernelWriterAssembly(KernelWriter):
       if self.useAtomicAdd:
         ########################################
         # first attempt write
-        module.addText(self.comment("issue first atomic writes"))
+        module.addComment1("issue first atomic writes")
         for elementIdx in range(0, len(batchElements)):
           element  = batchElements[elementIdx]
           addrCalc = ss.elementAddr[elementIdx]
@@ -9677,7 +9677,7 @@ class KernelWriterAssembly(KernelWriter):
 
         ########################################
         # first attempt write
-        module.addText(self.comment("issue first atomic writes"))
+        module.addComment1("issue first atomic writes")
         for elementIdx in range(0, len(batchElements)):
           element = batchElements[elementIdx]
           addrCalc = ss.elementAddr[elementIdx]
@@ -9744,7 +9744,7 @@ class KernelWriterAssembly(KernelWriter):
 
         ########################################
         # check first attempt
-        module.addText(self.comment("check success of writes, update masks"))
+        module.addComment1("check success of writes, update masks")
         for elementIdx in range(0, len(batchElements)):
           element = batchElements[elementIdx]
           mask = ss.elementMask[elementIdx]
@@ -9793,7 +9793,7 @@ class KernelWriterAssembly(KernelWriter):
                     vgpr(dataV+1), "c read during atomic != c read during prior load" )
 
         # or masks together to check early exit
-        module.addText(self.comment("or masks to check for exit"))
+        module.addComment1("or masks to check for exit")
         module.addInst("s_mov_b{}".format(wavelen), sgpr(tmpS01,laneSGPRC), hex(0), "empty mask" )
         for elementIdx in range(0, len(batchElements)):
           mask = ss.elementMask[elementIdx]
@@ -9802,10 +9802,10 @@ class KernelWriterAssembly(KernelWriter):
         module.addInst("s_cbranch_execz", labelAfterAtomicLoop.getLabelName(), "if exec is zero skip loop" )
 
         # begin atomic loop
-        module.addText(self.comment("atomic CAS loop"))
+        module.addComment1("atomic CAS loop")
         module.addCode(label)
 
-        module.addText(self.comment("apply updated masks and issue writes again"))
+        module.addComment1("apply updated masks and issue writes again")
         for elementIdx in range(0, len(batchElements)):
           element = batchElements[elementIdx]
           addrCalc = ss.elementAddr[elementIdx]
@@ -9862,7 +9862,7 @@ class KernelWriterAssembly(KernelWriter):
           module.addInst("s_waitcnt_vscnt", "null", "0", "writes")
 
         # check batched write success
-        module.addText(self.comment("apply masks and check for success"))
+        module.addComment1("apply masks and check for success")
         for elementIdx in range(0, len(batchElements)):
           element = batchElements[elementIdx]
           data = ss.elementData[elementIdx]
@@ -9885,7 +9885,7 @@ class KernelWriterAssembly(KernelWriter):
             module.addInst("s_and_b{}".format(wavelen),  sgpr(mask,laneSGPRC), sgpr(tmpS01,laneSGPRC), sgpr(mask,laneSGPRC), "inBounds & must try again" )
 
         # or masks together
-        module.addText(self.comment("or masks to check for exit"))
+        module.addComment1("or masks to check for exit")
         module.addInst("s_mov_b{}".format(wavelen), sgpr(tmpS01,laneSGPRC), hex(0), "empty mask" )
         for elementIdx in range(0, len(batchElements)):
           mask = ss.elementMask[elementIdx]
@@ -9924,7 +9924,7 @@ class KernelWriterAssembly(KernelWriter):
         if self.archCaps["SeparateVscnt"]:
           module.addInst("s_waitcnt_vscnt", "null", "0", "writes")
 
-      module.addText(self.comment("apply mask, calc new C and issue writes"))
+      module.addComment1("apply mask, calc new C and issue writes")
       # module.addCode(self.bomb()) # can see store addresses just before the store inst
 
       # Create a suffix and check if the string exists
@@ -9987,7 +9987,7 @@ class KernelWriterAssembly(KernelWriter):
           # Already write wave column block into LDS
           # Now read lds data back to registers and write to global memroy
           if ss.optSrdIncForRow and addrCalc.rowInc and kernel["StoreRemapVectorWidth"] > 0:
-            batchModule.addText(self.comment("StoreRemap: shift coord1 address"))
+            batchModule.addComment1("StoreRemap: shift coord1 address")
             batchModule.addCode(addrCalc.incrementToNextRow(kernel, "D", ss, tmpS01))
             batchModule.addInst("v_mov_b32", vgpr(tmpVgpr), addrCalc.rowInc, "set shift rows")
             batchModule.addInst("_v_add_u32", vgpr(self.storeRemapCoord1), vgpr(self.storeRemapCoord1), vgpr(tmpVgpr), "shift storeRemap coord1")
@@ -10197,7 +10197,7 @@ class KernelWriterAssembly(KernelWriter):
     ss.checkInTempVgprC()
     if kernel["StoreRemapVectorWidth"]:
       if self.StoreRemapLastBatch == 1:
-        module.addText(self.comment("Handle local read and global write"))
+        module.addComment1("Handle local read and global write")
         # this seems buggy? it's possible to issue more than one stores for SR
         # kStr += self.storeRemapAddStore(kernel, ss, addrCalc, tmpVgpr, tmpS01, edge)
         # storesIssued += 1

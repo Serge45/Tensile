@@ -157,6 +157,15 @@ class Module(Item):
     """
     self.addCode(TextBlock("\n/* %s */\n"%comment))
 
+  def addComment2(self, comment):
+    kStr = "\n/******************************************/\n"
+    for line in comment.split("\n"):
+      kStr += "/*"
+      kStr += " %-38s " % line
+      kStr += "*/\n"
+    kStr += "/******************************************/\n"
+    self.addCode(TextBlock(kStr))
+
   def addInst(self, *args):
     """
     Convenience function to construct a single Inst and add to items
