@@ -21,7 +21,7 @@
 
 from math import log
 from enum import Enum
-from .Code import Module
+from .Code import Module, Inst, Item
 from .Common import printExit
 import random
 import string
@@ -319,6 +319,16 @@ def saturateCastInt(sumIdxV, tmpVgpr, tmpSgpr, lowerBound, upperBound, type=Satu
         module.addInst("v_min_i32", vgpr("ValuC+%u"%(sumIdxV)), upperBound, vgpr("ValuC+%u"%(sumIdxV)), "x = min(%d, x)"%upperBound )
     elif type == SaturateCastType.LOWER:
         module.addInst("v_max_i32", vgpr("ValuC+%u"%(sumIdxV)), lowerBound, vgpr("ValuC+%u"%(sumIdxV)), "x = max(%d, x)"%lowerBound )
+    return module
+
+def replacePlaceHolder(module, srcStr, dstStr):
+    assert(isinstance(module, Item))
+    if isinstance(module, Module):
+        for item in module.items():
+            replacePlaceHolder(item, srcStr, dstStr)
+    elif isinstance(module, Inst):
+        for paramIdx, param in enumerate(module.params):
+            module.params[paramIdx] = param.replace(srcStr, dstStr)
     return module
 
 ########################################
