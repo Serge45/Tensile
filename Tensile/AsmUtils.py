@@ -238,6 +238,31 @@ def scalarStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpSgpr, \
     return kStr
 
 ########################################
+# Scalar Magic Div
+# product register, operand register, multiplier
+########################################
+
+# dividend is a symbol (constant or sgpr).  Used directly not inside automatic sgpr(..)
+# dst is 2 consecutive SGPR
+#   result returned in dst0. dst1 is used as a temp,
+# dst[1] cannot be same as divident, dst[0] can be same as dividend and this can be useful
+def scalarMagicDivExplicit(dst, dividend, magicNumber, magicAbit, magicShift):
+    module = Module("scalarMagicDivExplicit")
+    module.addComment1("dst1:0 = dividend(%s) / magicTag(%s)" % (dividend, magicNumber))
+    module.addInst("s_mul_hi_u32", sgpr(dst+1), dividend, sgpr(magicNumber), "scalar magic div (magicnum)")
+    module.addInst("s_mul_i32", sgpr(dst+0), dividend, sgpr(magicAbit), "scalar magic div (abit)")
+    module.addInst("s_add_u32", sgpr(dst+0), sgpr(dst+0), sgpr(dst+1), "scalar magic div (combine)")
+    module.addInst("s_lshr_b32", sgpr(dst+0), sgpr(dst+0), sgpr(magicShift), \
+                   "scalar magic div (shift), quotient in s%s"%dst)
+    return module
+
+def scalarMagicDiv(dst, dividend, magicTag):
+    return scalarMagicDivExplicit(dst, dividend,
+                                  magicNumber="MagicNumberSize"+magicTag,
+                                  magicAbit="MagicAbitSize"+magicTag,
+                                  magicShift="MagicShiftSize"+magicTag)
+
+########################################
 # Multiply
 # product register, operand register, multiplier
 ########################################

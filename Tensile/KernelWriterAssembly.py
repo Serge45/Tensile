@@ -28,7 +28,10 @@ from .Utils import ceil_divide
 from .AsmAddressCalculation import AddrCalculation
 from .AsmMemoryInstruction import MemoryInstruction
 from .AsmRegisterPool import RegisterPool
-from .AsmUtils import inst, vgpr, sgpr, log2, vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, SaturateCastType, LabelManager
+from .AsmAssert import Assert, bomb
+from .AsmUtils import inst, vgpr, sgpr, log2, vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
+                      scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, replacePlaceHolder, \
+                      SaturateCastType, LabelManager
 from .Activation import ActivationModule, ActivationType, RemoveDuplicateAssignment
 
 from math import ceil, trunc, modf, log
@@ -1364,6 +1367,7 @@ class KernelWriterAssembly(KernelWriter):
     # reserve some sgprs to save/restore the execmask
     if self.db["EnableAsserts"]:
       self.defineSgpr("SaveExecMask", 2, 2)
+    self.asmAssert = Assert(self.laneSGPRCount, kernel["WavefrontSize"])
 
     self.defineSgpr("GSUSumIdx", 2 if kernel["GlobalSplitU"] > 1 else 0)
 
@@ -2746,7 +2750,6 @@ class KernelWriterAssembly(KernelWriter):
       kStr += self.comment("Debug Buffer")
 
       # nwg0 FIXME use NumWorkGroups0
-      #kStr += str(self.assert_eq(vgpr(nwg0), sgpr("NumWorkGroups0")) # "bozo, remove me"))
       nwg0 = self.vgprPool.checkOut(1)
       tmpVgpr = self.vgprPool.checkOutAligned(2, 2)
       tmpSgpr = self.getTmpSgpr(1).idx()
@@ -2785,11 +2788,11 @@ class KernelWriterAssembly(KernelWriter):
       kStr += self.initLds(kernel, self.initLdsValue)
 
     if kernel["CheckTensorDimAsserts"]:
-      kStr += str(self.assert_multiple_b32(sgpr("SizesSum+%u"%(self.numSgprSizesSum-1)),
+      kStr += str(self.getMultipleB32Assert(sgpr("SizesSum+%u"%(self.numSgprSizesSum-1)),
                   kernel["AssertSummationElementMultiple"], 0x1001))
-      kStr += str(self.assert_multiple_b32(sgpr("SizesFree+0"),
+      kStr += str(self.getMultipleB32Assert(sgpr("SizesFree+0"),
                   kernel["AssertFree0ElementMultiple"], 0x1002))
-      kStr += str(self.assert_multiple_b32(sgpr("SizesFree+1"),
+      kStr += str(self.getMultipleB32Assert(sgpr("SizesFree+1"),
                   kernel["AssertFree1ElementMultiple"], 0x1003))
 
     return kStr
@@ -3440,8 +3443,8 @@ class KernelWriterAssembly(KernelWriter):
     if kernel["CheckDimOverflow"]:
       # if tensor is really skinny (SizesFree is less then glvw) then shifting fails-
       # can detect here if the computed edge after subtracting marging is <0
-      kStr += str(self.assert_ge_i32(vgpr(edge), 0))
-    #kStr += str(self.assert_ne(sgpr("WorkGroup0"),1))
+      kStr += str(self.getCmpAssert(self.asmAssert.ge_i32, vgpr(edge), 0))
+    #kStr += str(self.getCmpAssert(self.asmAssert.ne, sgpr("WorkGroup0"),1))
 
     # shift offsets
     vSrc = tP["vgprTileOffsets"]
@@ -3525,7 +3528,7 @@ class KernelWriterAssembly(KernelWriter):
 
     self.vgprPool.checkIn(tmp)
     #if tP["isB"]:
-    #  kStr += str(self.bomb(0x100))
+    #  kStr += str(self.getBomb(0x100))
 
     return "" if self.dontAppendCode else kStr
 
@@ -3680,9 +3683,9 @@ class KernelWriterAssembly(KernelWriter):
         print(tc, "tileStride=", tileStride, "unrollStride=", unrollStride, \
               "stride=%s"%(stride1))
 
-        kStr += str(self.assert_vector_diff(vgpr("GlobalReadOffset%s+%u"%(tc,0)), \
-                                            vgpr("GlobalReadOffset%s+%u"%(tc,graIdx)), \
-                                            sgpr(scalarGro)))
+        kStr += str(self.getVectorDiffAssert(vgpr("GlobalReadOffset%s+%u"%(tc,0)), \
+                                             vgpr("GlobalReadOffset%s+%u"%(tc,graIdx)), \
+                                             sgpr(scalarGro)))
 
     # dump final offsets
     # BufferLoad flavor:
@@ -3722,7 +3725,7 @@ class KernelWriterAssembly(KernelWriter):
       # This is guaranteed to fit in 32-bit since the WG*MT is a number of elements in some unsigned direction:
       kStr += self.s_mul_u64_u32(sgpr(tileStart+0), sgpr(tileStart+1), sgpr(tP["wg"]), kernel[tP["mt"]], "WorkGroup[01] * MT")
       if kernel["CheckDimOverflow"] >=2:
-        kStr += str(self.assert_eq(sgpr(tileStart+1),0))
+        kStr += str(self.getCmpAssert(self.asmAssert.eq, sgpr(tileStart+1),0))
       strideF = self.strideRef(tc, tP['tileIdx'])
       if not self.isConstUnitStride(strideF):
         kStr += self.s_mul_u64_u32(sgpr(tileStart), sgpr(tileStart+1), sgpr(tileStart+0), \
@@ -3734,7 +3737,7 @@ class KernelWriterAssembly(KernelWriter):
 
         kStr += self.s_mul_u64_u32(sgpr(stmp+0), sgpr(stmp+1), kernel["DepthU"], sgpr("GSUSumIdx"), "gsuOffset = DepthU*bpe*GSUSumIdx")
         if kernel["CheckDimOverflow"] >=2:
-          kStr += str(self.assert_eq(sgpr(stmp+1),0))
+          kStr += str(self.getCmpAssert(self.asmAssert.eq, sgpr(stmp+1),0))
         unrollSummation = [ i for i in tP["ia"] if i in kernel["ProblemType"]["IndicesSummation"] ]
         stride = self.strideRef(tc,unrollSummation[-1])
         if tP["tlu"] and not self.isConstUnitStride(stride):
@@ -3835,7 +3838,7 @@ class KernelWriterAssembly(KernelWriter):
     kStr += inst("s_mov_b32", sgpr("Srd%s+3"%tc), "Srd127_96", "Set bits 127_96 in SRD")
 
     #if tP["isB"]:
-    #  kStr += str(self.assert_ne(sgpr("WorkGroup1"), 0xA))
+    #  kStr += str(self.getCmpAssert(self.asmAssert.ne, sgpr("WorkGroup1"), 0xA))
 
     if kernel["CheckDimOverflow"]>=2:
       # double-check to make sure the SRD limit is inside the allowed tensor:
@@ -3853,13 +3856,13 @@ class KernelWriterAssembly(KernelWriter):
       else:
         kStr += inst("s_sub_u32",  sgpr(stmp+0), sgpr(stmp+0), sgpr("Srd%s+2"%tc), "sub buffer limit")
 
-      kStr += str(self.assert_eq(sgpr(stmp+1), 0))  # must be 0 or we are way OOB
-      kStr += str(self.assert_ge_u32(sgpr(stmp+0), 0)) # diff greater than zero
+      kStr += str(self.getCmpAssert(self.asmAssert.eq, sgpr(stmp+1), 0))  # must be 0 or we are way OOB
+      kStr += str(self.getCmpAssert(self.asmAssert.ge_u32, sgpr(stmp+0), 0)) # diff greater than zero
       if 0 and tP["isB"]:
         t = self.vgprPool.checkOut(1, "t", self.preventVgprOverflowDuringNewTile)
         kStr += inst("s_add_u32", sgpr(stmp+0), sgpr("WorkGroup1"), sgpr("WorkGroup2"), "bozo, debug")
         kStr += inst("v_mov_b32", vgpr(t), 0x54, "")
-        kStr += str(self.assert_ne(sgpr(stmp+0), vgpr(t) ))
+        kStr += str(self.getCmpAssert(self.asmAssert.ne, sgpr(stmp+0), vgpr(t) ))
         self.vgprPool.checkIn(t)
 
     return kStr
@@ -3878,7 +3881,7 @@ class KernelWriterAssembly(KernelWriter):
 
       kStr += self.computeLoadSrd(kernel, tP, tc, kernel["ProblemType"]["IndexAssignments%s"%tc], tP["bpe"])
 
-      #kStr += str(self.bomb(0x13)) # after addresses and SRD set
+      #kStr += str(self.getBomb(0x13)) # after addresses and SRD set
     else:
       tmp = self.vgprPool.checkOut(2, "tmp", self.preventVgprOverflowDuringNewTile)
       kStr += inst("v_mov_b32", vgpr(tmp+0), sgpr("Address%s+0"%tP["tensorChar"]), "" )
@@ -4052,13 +4055,13 @@ class KernelWriterAssembly(KernelWriter):
             "<- scale by bpe")
 
         if 0 and tP["isB"] and loopIdx==0:
-          kStr += str(self.bomb())
-          #kStr += str(self.assert_ne(sgpr("WorkGroup1"),0))
+          kStr += str(self.getBomb())
+          #kStr += str(self.getCmpAssert(self.asmAssert.ne, sgpr("WorkGroup1"),0))
 
     #kStr += dump(vgpr("GlobalReadIncs%s"%tP["tensorChar"]))
     #kStr += "s_endpgm\n"
     #if tP["isB"]:
-    #  kStr += str(self.bomb(0x100))
+    #  kStr += str(self.getBomb(0x100))
     return "" if self.dontAppendCode else kStr
 
   ##############################################################################
@@ -4263,7 +4266,7 @@ class KernelWriterAssembly(KernelWriter):
     # dump lds write offsets
     #if tP["isA"]:
       #kStr += str(self.dump(vgpr("LocalWriteAddr%s"%tP["tensorChar"])))
-      #kStr += str(self.bomb(-40))
+      #kStr += str(self.getBomb(-40))
     # do not generate local write address code if DirectToVgpr is enabled
     return "" if self.dontAppendCode or kernel["DirectToVgpr%s"%tc] else kStr
 
@@ -4892,7 +4895,7 @@ class KernelWriterAssembly(KernelWriter):
         kStr += "\n"
         kStr += self.setTailSrd(kernel, self.tPB, sgpr(tmpSgpr+1))
         kStr += "\n"
-        #kStr += str(self.bomb())
+        #kStr += str(self.getBomb())
 
       kStr += "%s//numIter%s = (((size%s %% LOCAL_DEPTHU) + LOCAL_SPLITU - 1) / LOCAL_SPLITU)%s" \
           % (self.indent, self.unrollChar, self.unrollChar, self.endLine)
@@ -6487,7 +6490,7 @@ class KernelWriterAssembly(KernelWriter):
         if self.archCaps["SeparateVscnt"]:
           kStr += "s_waitcnt_vscnt null, 0\n"
         kStr += "s_barrier // debug\n"
-        #kStr += str(self.assert_lt(vgpr("Serial"), 64)) # examine second wavefront
+        #kStr += str(self.getCmpAssert(self.asmAssert.lt, vgpr("Serial"), 64)) # examine second wavefront
 
     # TODO - can remove one of these m0 restores if A and B both TLU
     if kernel["DirectToLds%s"%tP["tensorChar"]]:
@@ -6730,7 +6733,7 @@ class KernelWriterAssembly(KernelWriter):
         if self.archCaps["SeparateVscnt"]:
           imod.footer.addInst( "s_waitcnt_vscnt", "null", "0", "stores")
         imod.footer.addInst( "s_barrier", "debug")
-        #kStr += str(self.assert_lt(vgpr("Serial"), 64)) # examine second wavefront
+        #kStr += str(self.getCmpAssert(self.asmAssert.lt, vgpr("Serial"), 64)) # examine second wavefront
 
     # TODO - can remove one of these m0 restores if A and B both TLU
     if kernel["DirectToLds%s"%tP["tensorChar"]] and not (mode == 1 and kernel["PrefetchGlobalRead"]==2):
@@ -7175,8 +7178,8 @@ class KernelWriterAssembly(KernelWriter):
       if self.archCaps["SeparateVscnt"]:
         localWriteCode.addInst( "s_waitcnt_vscnt", "null", "0", "")
       localWriteCode.addInst("s_barrier", "dump LDS" )
-      localWriteCode.addCode(self.assert_ne(sgpr("WorkGroup0"),1))
-      #localWriteCode.addCode(self.bomb())
+      localWriteCode.addCode(self.getCmpAssert(self.asmAssert.ne, sgpr("WorkGroup0"),1))
+      #localWriteCode.addCode(self.getBomb())
 
     return imod
 
@@ -7517,7 +7520,7 @@ class KernelWriterAssembly(KernelWriter):
       kStr += inst("s_waitcnt_vscnt", "null", "0", "writes")
     kStr += self.syncThreads(kernel, "post-lsu local write")
     #kStr += self.dumpLds(kernel, 0, 16)
-    #kStr += str(self.bomb(5))
+    #kStr += str(self.getBomb(5))
     return kStr
 
   ##############################################################################
@@ -9314,7 +9317,7 @@ class KernelWriterAssembly(KernelWriter):
             module.addInst("v_mov_b32", vgpr("ValuC+%u"%sumIdxV), self.db["ValueCExpectedValue"], "force expected value" )
           if self.db["CheckValueC"]:
             module.addInst("s_mov_b32", sgpr(tmpS01), self.db["ValueCExpectedValue"], "Move expected value")
-            module.addCode(self.assert_eq(vgpr("ValuC+%u"%sumIdxV), sgpr(tmpS01)))
+            module.addCode(self.getCmpAssert(self.asmAssert.eq, vgpr("ValuC+%u"%sumIdxV), sgpr(tmpS01)))
 
         # sgemm, HPA-bfgemm(b,b,b,b,s,s), and HPA-hgemm(h,h,h,h,s,s)
         # (h,h,h,h,h,h) + HPA (will be converted to (h,h,h,h,s,s)), internal alpha is single
@@ -9326,7 +9329,7 @@ class KernelWriterAssembly(KernelWriter):
             module.addInst("v_mov_b32", vgpr("ValuC+%u"%sumIdxV), vgpr("Serial"), "force expected value to serial" )
           if self.db["CheckValueC"]:
             module.addInst("s_mov_b32", sgpr(tmpS01), self.db["ValueCExpectedValue"], "Move expected value")
-            module.addCode(self.assert_eq(vgpr("ValuC+%u"%sumIdxV), sgpr(tmpS01)))
+            module.addCode(self.getCmpAssert(self.asmAssert.eq, vgpr("ValuC+%u"%sumIdxV), sgpr(tmpS01)))
 
         # dgemm
         elif kernel["ProblemType"]["ComputeDataType"].isDouble():
@@ -9468,9 +9471,9 @@ class KernelWriterAssembly(KernelWriter):
         module.addInst("s_waitcnt_vscnt", "null", "0", "writes")
       module.addInst("s_barrier", "debug")
     if not edge and self.db["ForceEdgeStores"]>=2:
-      module.addInst(self.bomb()) # should not get here
+      module.addInst(self.getBomb()) # should not get here
     if edge and self.db["AssertNoEdge"]:
-      module.addInst(self.bomb()) # should not get here
+      module.addInst(self.getBomb()) # should not get here
 
     ########################################
     # rC *= alpha
@@ -9915,7 +9918,7 @@ class KernelWriterAssembly(KernelWriter):
                 module.addInst("v_mov_b32", vgpr("ValuC+%u"%sumIdxV), vgpr("Serial"), "force expected value to serial" )
               if self.db["CheckValueC"]:
                 module.addInst("s_mov_b32", sgpr(tmpS01), self.db["ValueCExpectedValue"], "Move expected value")
-                module.addCode(self.assert_eq(vgpr("ValuC+%u"%sumIdxV), sgpr(tmpS01)))
+                module.addCode(self.getCmpAssert(self.asmAssert.eq, vgpr("ValuC+%u"%sumIdxV), sgpr(tmpS01)))
 
       ########################################
       # wait for batched load
@@ -9925,7 +9928,7 @@ class KernelWriterAssembly(KernelWriter):
           module.addInst("s_waitcnt_vscnt", "null", "0", "writes")
 
       module.addComment1("apply mask, calc new C and issue writes")
-      # module.addCode(self.bomb()) # can see store addresses just before the store inst
+      # module.addCode(self.getBomb()) # can see store addresses just before the store inst
 
       # Create a suffix and check if the string exists
       activationLabelSuffix = "%s%s%u"%("Beta_" if beta else "", "Edge_" if edge else "", batchIdx)
@@ -10156,7 +10159,7 @@ class KernelWriterAssembly(KernelWriter):
             sumIdx = ss.elementSumIdx[elementIdx]
             # Need to fix for other types:
             assert (kernel["ProblemType"]["DestDataType"].isSingle() or kernel["ProblemType"]["DestDataType"].isInt32())
-            module.addCode(self.assert_eq(vgpr(sumIdx), sgpr(tmpS01)))
+            module.addCode(self.getCmpAssert(self.asmAssert.eq, vgpr(sumIdx), sgpr(tmpS01)))
 
 
         if edge and (atomic or not kernel["BufferStore"]):
@@ -10515,7 +10518,7 @@ class KernelWriterAssembly(KernelWriter):
     if 0 and lgkmcnt == 0:
       imod = Code.Module("DebugWait")
       imod.addCode(waitcnt)
-      imod.addCode(self.bomb())
+      imod.addCode(self.getBomb())
       return imod
     return waitcnt
 
@@ -10764,160 +10767,27 @@ class KernelWriterAssembly(KernelWriter):
   def s_mul_i64_i32 (self, dst0, dst1,  src0, src1, comment):
     return self.s_mul_int_64_32(dst0, dst1, src0, src1, True, comment)
 
-  # dividend is a symbol (constant or sgpr).  Used directly not inside automatic sgpr(..)
-  # dst is 2 consecutive SGPR
-  #   result returned in dst0. dst1 is used as a temp,
-  # dst[1] cannot be same as divident, dst[0] can be same as dividend and this can be useful
-  def scalarMagicDivExplicit(self, dst, dividend, magicNumber, magicAbit, magicShift):
-    kStr = ""
-    kStr = self.comment("dst1:0 = dividend(%s) / magicTag(%s)" % (dividend, magicNumber))
-    kStr += inst("s_mul_hi_u32", sgpr(dst+1), dividend, sgpr(magicNumber), "scalar magic div (magicnum)")
-    kStr += inst("s_mul_i32", sgpr(dst+0), dividend, sgpr(magicAbit), "scalar magic div (abit)")
-    kStr += inst("s_add_u32", sgpr(dst+0), sgpr(dst+0), sgpr(dst+1), "scalar magic div (combine)")
-    kStr += inst("s_lshr_b32", sgpr(dst+0), sgpr(dst+0), sgpr(magicShift), \
-                "scalar magic div (shift), quotient in s%s"%dst)
-    return kStr
+  def getBomb(self, cookie=None):
+    scratchVgpr = self.vgprPool.checkOut(2)
+    bomb(scratchVgpr, cookie)
+    self.vgprPool.checkIn(scratchVgpr)
 
-  def scalarMagicDiv(self, dst, dividend, magicTag):
-    return self.scalarMagicDivExplicit(dst, dividend,
-                                        magicNumber="MagicNumberSize"+magicTag,
-                                        magicAbit="MagicAbitSize"+magicTag,
-                                        magicShift="MagicShiftSize"+magicTag)
+  def getCmpAssert(self, function, val0, val1, cookie=-1):
+    scratchVgpr = self.vgprPool.checkOut(2)
+    function(val0, val1, scratchVgpr, cookie)
+    self.vgprPool.checkIn(scratchVgpr)
 
-  def bomb(self,cookie=None,scratchVgpr=-1):
-      """
-      Cause a GPUVM fault.
-      Instruction after the bomb will write the cookie to SGPR0, so you can see the cookie in the
-      backtrace. Useful for locating which spot in code generated the bomb
-      vgprAddr controls which vgpr to overwrite with the null pointer address
-      """
+  def getMultipleB32Assert(self, sval, multiple2, cookie=-1):
+    scratchVgpr = self.vgprPool.checkOut(2)
+    self.asmAssert.multiple_b32(sval, multiple2, scratchVgpr, cookie)
+    self.vgprPool.checkIn(scratchVgpr)
 
-      module = Code.Module("bomb")
-      if scratchVgpr==-1:
-        vgprAddr = self.vgprPool.checkOut(2)
-      else:
-        vgprAddr = scratchVgpr
-      if cookie != None:
-        if cookie < 0:
-          kStr += "bomb_neg%u:\n" % abs(cookie)
-        else:
-          kStr += "bomb_%u:\n" % abs(cookie)
-      module.addInst("v_mov_b32", vgpr(vgprAddr+0), 0, "")
-      module.addInst("v_mov_b32", vgpr(vgprAddr+1), 0, "")
-      #module.addInst("s_trap",1,  "")
-      module.addInst("_flat_load_b32", vgpr(vgprAddr), vgpr(vgprAddr,2), "bomb - force fault" )
-
-      # This move does not execute but appears in the instruction stream immediately following
-      # the faulting load:
-      if cookie != None:
-        module.addInst("s_mov_b32", sgpr(0), cookie, "bomb cookie=%d(0x%x)"%(cookie,cookie&0xffffffff))
-
-      if scratchVgpr == -1:
-        self.vgprPool.checkIn(vgprAddr)
-      return module
-
-  ##############################################################################
-  # assertCommon : Common routine for all assert functions.
-  # On entry, we have already set the exec-mask so any enabled lanes should bomb
-  ##############################################################################
-  def assertCommon(self, cookie=-1):
-    module = Code.Module("assertCommon")
-    if self.db["EnableAsserts"]:
-      self.printedAssertCnt += 1
-      # Default cookie for asserts is negative of printed #asserts
-      # Can be used to roughly identify which assert in the code is firing
-      module.addCode(self.bomb(cookie if cookie != -1 else -self.printedAssertCnt))
-    return module
-
-  ##############################################################################
-  # assertCmpCommon : Common routine for all assert comparison functions
-  ##############################################################################
-  def assertCmpCommon(self, cond, val0, val1, cookie=-1):
-    module = Code.Module("assertCmpCommon")
-    if self.db["EnableAsserts"]:
-      module.addInst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), 0, \
-          "assert: saved execmask")
-      module.addInst("_v_cmpx_%s"%cond, self.vcc, val0, val1, "v_cmp" )
-      module.addCode(self.assertCommon(cookie))
-      module.addInst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: restore execmask")
-    return module
-
-  ##############################################################################
-  # Handle different conditions for the asserts:
-  # These support uin32 compare, float could be added later
-  # Asserts currently modify vcc
-  ##############################################################################
-  def assert_eq(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("ne_u32", val0, val1, cookie)
-
-  def assert_eq_u16(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("ne_u16", val0, val1, cookie)
-
-  def assert_ne(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("eq_u32", val0, val1, cookie)
-
-  def assert_lt_u32(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("ge_u32", val0, val1, cookie)
-
-  def assert_gt_u32(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("le_u32", val0, val1, cookie)
-
-  def assert_le_u32(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("gt_u32", val0, val1, cookie)
-
-  def assert_ge_u32(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("lt_u32", val0, val1, cookie)
-
-  def assert_ge_i32(self, val0, val1, cookie=-1):
-    return self.assertCmpCommon("lt_i32", val0, val1, cookie)
-
-  # can left shift w/o losing non-zero bits:
-  def assert_no_shift_of(self, val0, shift, stmp, cookie=-1):
-    kStr = ""
-    # TODO - use BFE here:
-    kStr += inst ("s_mov_b32", stmp, hex((shift-1) << (32-log2(shift))), "assert_no_shift_of - compute mask")
-    kStr += inst ("s_and_b32", stmp, stmp, val0, "assert_no_shift_of")
-    kStr += str(self.assert_eq(stmp, 0, cookie))
-    return kStr
-
-  # asserts if val0 is not an integer multiple of multiple2
-  # multiple2 must be a constant and power of 2
-  # for example assert_multiple(A, 8) will assert if A is not multiple of 8
-  def assert_multiple_b32(self, sval, multiple2, cookie=-1):
-    kStr = ""
-    if self.db["EnableAsserts"]:
-
-      stmp = sgpr("SaveExecMask") # repurpose to get a tmp sgpr
-
-      kStr += inst("s_and_b{}".format(self.kernel["WavefrontSize"]), stmp, sval, multiple2-1, "mask" )
-      kStr += inst("s_cmp_eq_u32", stmp, 0, "if maskedBits==0 then SCC=1 == no fault" )
-      kStr += inst("s_mov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), -1, "")
-      kStr += inst("s_cmov_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask", self.laneSGPRCount),  0, "Clear exec mask")
-
-      kStr += inst("s_and_saveexec_b{}".format(self.kernel["WavefrontSize"]), sgpr("SaveExecMask",self.laneSGPRCount), sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: saved execmask")
-
-      kStr += str(self.assertCommon(cookie))
-
-      kStr += inst("s_or_saveexec_b{}".format(self.kernel["WavefrontSize"]), self.vcc, sgpr("SaveExecMask",self.laneSGPRCount), \
-          "assert: restore execmask")
-
-    return kStr
-
-  # assert v0 + expectedScalarDiff == v1
-  # Verify that each element in v1 is scalar offset from v0
-  def assert_vector_diff(self, v0, v1, expectedScalarDiff, cookie=-1):
-    module = Code.Module("assert_vector_diff")
-    cmpVgpr = self.vgprPool.checkOut(1)
-    module.addInst("_v_add_co_u32", \
-                   vgpr(cmpVgpr), self.vcc, \
-                   expectedScalarDiff, \
-                   v0, \
-                   "assert_vector_diff add expectedScalarDiff")
-    module.addCode(self.assert_eq(vgpr(cmpVgpr), v1, cookie))
-    self.vgprPool.checkIn(cmpVgpr)
-    return module
+  def getVectorDiffAssert(self, v0, v1, expectedScalarDiff, cookie=-1):
+    cmpvtmp = self.vgprPool.checkOut(1)
+    vtmp = self.vgprPool.checkOut(2)
+    self.asmAssert.assert_vector_diff(v0, v1, expectedScalarDiff, cmpvtmp, vtmp, cookie)
+    self.vgprPool.checkIn(vtmp)
+    self.vgprPool.checkIn(cmpvtmp)
 
   ########################################
   # Store to Debug Buffer

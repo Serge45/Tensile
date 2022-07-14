@@ -94,7 +94,7 @@ class FMA_BF16_HPA(MAC):
                         C[0] = A[0]*B[0]+D[0]
                         C[1] = A[1]*B[1]+D[1]
                         """
-                        #kStr += self.bomb(-13)
+                        #kStr += self.getBomb(-13)
 
         kStr += priority(writer, 0, "Reset priority after macs")
         return kStr
