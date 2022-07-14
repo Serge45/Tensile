@@ -143,6 +143,13 @@ class Module(Item):
       return self.itemList.index(targetItem)
     return -1
 
+  def addComment(self, comment):
+    """
+    Convenience function to format arg as a comment and add TextBlock item
+    This comment is a single line // MYCOMMENT
+    """
+    self.addCode(TextBlock("// %s\n"%comment))
+
   def addComment0(self, comment):
     """
     Convenience function to format arg as a comment and add TextBlock item

@@ -106,12 +106,12 @@ def vectorStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpVgpr, tmpSgpr, 
     dComment = "%s = %s / %s"    % (vgpr(qReg), vgpr(dReg), divisor) if (comment=="") else comment
     rComment = "%s = %s %% %s" % (vgpr(rReg), vgpr(dReg), divisor) if (comment=="") else comment
 
-    kStr = ""
+    module = Module("vectorStaticDivideAndRemainder")
     if ((divisor & (divisor - 1)) == 0): # pow of 2
         divisor_log2 = log2(divisor)
-        kStr += inst("v_lshrrev_b32", vgpr(qReg), divisor_log2, vgpr(dReg), dComment)
+        module.addInst("v_lshrrev_b32", vgpr(qReg), divisor_log2, vgpr(dReg), dComment)
         if doRemainder:
-            kStr += inst("v_and_b32", vgpr(rReg), (divisor-1), vgpr(dReg), rComment)
+            module.addInst("v_and_b32", vgpr(rReg), (divisor-1), vgpr(dReg), rComment)
     else:
         """
         if divisor == 30:
@@ -129,29 +129,30 @@ def vectorStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpVgpr, tmpSgpr, 
         """
         shift = 32+1
         magic = ((2**shift) // divisor) + 1
-        kStr += inst("s_mov_b32", sgpr(tmpSgpr), hex(magic), dComment)
-        kStr += inst("v_mul_hi_u32", vgpr(tmpVgpr+1), vgpr(dReg), sgpr(tmpSgpr), dComment)
-        kStr += inst("v_mul_lo_u32", vgpr(tmpVgpr+0), vgpr(dReg), sgpr(tmpSgpr), dComment)
-        kStr += inst("v_lshrrev_b64", vgpr(tmpVgpr,2), hex(shift), vgpr(tmpVgpr,2), dComment)
-        kStr += inst("v_mov_b32", vgpr(qReg), vgpr(tmpVgpr), dComment)
+        module.addInst("s_mov_b32", sgpr(tmpSgpr), hex(magic), dComment)
+        module.addInst("v_mul_hi_u32", vgpr(tmpVgpr+1), vgpr(dReg), sgpr(tmpSgpr), dComment)
+        module.addInst("v_mul_lo_u32", vgpr(tmpVgpr+0), vgpr(dReg), sgpr(tmpSgpr), dComment)
+        module.addInst("v_lshrrev_b64", vgpr(tmpVgpr,2), hex(shift), vgpr(tmpVgpr,2), dComment)
+        module.addInst("v_mov_b32", vgpr(qReg), vgpr(tmpVgpr), dComment)
         if doRemainder:
-            kStr += inst("s_mov_b32", sgpr(tmpSgpr), hex(divisor), rComment)
-            kStr += inst("v_mul_lo_u32", vgpr(tmpVgpr), vgpr(qReg), sgpr(tmpSgpr), rComment)
-            kStr += inst("_v_sub_u32", vgpr(rReg), vgpr(dReg), vgpr(tmpVgpr), rComment)
-    return kStr
+            module.addInst("s_mov_b32", sgpr(tmpSgpr), hex(divisor), rComment)
+            module.addInst("v_mul_lo_u32", vgpr(tmpVgpr), vgpr(qReg), sgpr(tmpSgpr), rComment)
+            module.addInst("_v_sub_u32", vgpr(rReg), vgpr(dReg), vgpr(tmpVgpr), rComment)
+    return module
 
 def vectorStaticDivide(qReg, dReg, divisor, tmpVgpr, tmpSgpr, comment=""):
     rReg = -1 # unused
-    kStr = vectorStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpVgpr, tmpSgpr, False, comment)
-    return kStr
+    module = vectorStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpVgpr, tmpSgpr, False, comment)
+    module.name = "vectorStaticDivide (reg=-1)"
+    return module
 
 def vectorStaticRemainder(qReg, rReg, dReg, divisor, tmpVgpr, tmpSgpr, comment=""):
     if comment == "":
         comment = "%s = %s %% %s" % (vgpr(rReg), vgpr(dReg), divisor)
 
-    kStr = ""
+    module = Module("vectorStaticRemainder")
     if ((divisor & (divisor - 1)) == 0): # pow of 2
-        kStr += inst("v_and_b32", vgpr(rReg), (divisor-1), vgpr(dReg), comment)
+        module.addInst("v_and_b32", vgpr(rReg), (divisor-1), vgpr(dReg), comment)
     else:
         """
         if divisor == 30:
@@ -169,16 +170,16 @@ def vectorStaticRemainder(qReg, rReg, dReg, divisor, tmpVgpr, tmpSgpr, comment="
         """
         shift = 32+1
         magic = ((2**shift) // divisor) + 1
-        kStr += inst("s_mov_b32", sgpr(tmpSgpr), hex(magic), comment)
-        kStr += inst("v_mul_hi_u32", vgpr(tmpVgpr+1), vgpr(dReg), sgpr(tmpSgpr), comment)
-        kStr += inst("v_mul_lo_u32", vgpr(tmpVgpr+0), vgpr(dReg), sgpr(tmpSgpr), comment)
-        kStr += inst("s_mov_b32", sgpr(tmpSgpr), hex(shift), comment)
-        kStr += inst("v_lshrrev_b64", vgpr(tmpVgpr,2), sgpr(tmpSgpr), vgpr(tmpVgpr,2), comment)
-        kStr += inst("v_mov_b32", vgpr(qReg), vgpr(tmpVgpr), comment)
-        kStr += inst("s_mov_b32", sgpr(tmpSgpr), hex(divisor), comment)
-        kStr += inst("v_mul_lo_u32", vgpr(tmpVgpr), vgpr(qReg), sgpr(tmpSgpr), comment)
-        kStr += inst("_v_sub_u32", vgpr(rReg), vgpr(dReg), vgpr(tmpVgpr), comment)
-    return kStr
+        module.addInst("s_mov_b32", sgpr(tmpSgpr), hex(magic), comment)
+        module.addInst("v_mul_hi_u32", vgpr(tmpVgpr+1), vgpr(dReg), sgpr(tmpSgpr), comment)
+        module.addInst("v_mul_lo_u32", vgpr(tmpVgpr+0), vgpr(dReg), sgpr(tmpSgpr), comment)
+        module.addInst("s_mov_b32", sgpr(tmpSgpr), hex(shift), comment)
+        module.addInst("v_lshrrev_b64", vgpr(tmpVgpr,2), sgpr(tmpSgpr), vgpr(tmpVgpr,2), comment)
+        module.addInst("v_mov_b32", vgpr(qReg), vgpr(tmpVgpr), comment)
+        module.addInst("s_mov_b32", sgpr(tmpSgpr), hex(divisor), comment)
+        module.addInst("v_mul_lo_u32", vgpr(tmpVgpr), vgpr(qReg), sgpr(tmpSgpr), comment)
+        module.addInst("_v_sub_u32", vgpr(rReg), vgpr(dReg), vgpr(tmpVgpr), comment)
+    return module
 
 # only used for loop unroll and GlobalSplitU
 # doRemainder==0 : compute quotient only
@@ -197,14 +198,14 @@ def scalarStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpSgpr, \
 
     dRegSgpr = dReg if type(dReg) == str and dReg.startswith("s[") else sgpr(dReg)
 
-    kStr = ""
+    module = Module("scalarStaticDivideAndRemainder")
     if ((divisor & (divisor - 1)) == 0): # pow of 2
         divisor_log2 = log2(divisor)
         if doRemainder != 2:
-            kStr += inst("s_lshr_b32", qRegSgpr, dRegSgpr, divisor_log2, \
+            module.addInst("s_lshr_b32", qRegSgpr, dRegSgpr, divisor_log2, \
                     "%s = %s / %u"%(qRegSgpr, dRegSgpr, divisor) )
         if doRemainder:
-            kStr += inst("s_and_b32", sgpr(rReg), (divisor-1), dRegSgpr, \
+            module.addInst("s_and_b32", sgpr(rReg), (divisor-1), dRegSgpr, \
                     "%s = %s %% %u"%(sgpr(rReg), dRegSgpr, divisor) )
     else:
         """
@@ -224,18 +225,18 @@ def scalarStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpSgpr, \
         magicHi = magic // (2**16)
         magicLo = magic & (2**16-1)
 
-        kStr += inst("s_mov_b32", sgpr(tmpSgpr+1), hex(0), "STATIC_DIV: divisior=%s"%divisor)
-        kStr += inst("s_mul_i32", sgpr(tmpSgpr+0), hex(magicHi), dRegSgpr, "tmp1 = dividend * magic hi")
-        kStr += inst("s_lshl_b64", sgpr(tmpSgpr,2), sgpr(tmpSgpr,2), hex(16), "left shift 16 bits")
-        kStr += inst("s_mul_i32", qRegSgpr, dRegSgpr, hex(magicLo), "tmp0 = dividend * magic lo")
-        kStr += inst("s_add_u32", sgpr(tmpSgpr+0), qRegSgpr, sgpr(tmpSgpr+0), "add lo")
-        kStr += inst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), hex(0), "add hi")
-        kStr += inst("s_lshr_b64", sgpr(tmpSgpr,2), sgpr(tmpSgpr,2), hex(shift), "tmp1 = (dividend * magic) << shift")
-        kStr += inst("s_mov_b32", qRegSgpr, sgpr(tmpSgpr), "quotient")
+        module.addInst("s_mov_b32", sgpr(tmpSgpr+1), hex(0), "STATIC_DIV: divisior=%s"%divisor)
+        module.addInst("s_mul_i32", sgpr(tmpSgpr+0), hex(magicHi), dRegSgpr, "tmp1 = dividend * magic hi")
+        module.addInst("s_lshl_b64", sgpr(tmpSgpr,2), sgpr(tmpSgpr,2), hex(16), "left shift 16 bits")
+        module.addInst("s_mul_i32", qRegSgpr, dRegSgpr, hex(magicLo), "tmp0 = dividend * magic lo")
+        module.addInst("s_add_u32", sgpr(tmpSgpr+0), qRegSgpr, sgpr(tmpSgpr+0), "add lo")
+        module.addInst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), hex(0), "add hi")
+        module.addInst("s_lshr_b64", sgpr(tmpSgpr,2), sgpr(tmpSgpr,2), hex(shift), "tmp1 = (dividend * magic) << shift")
+        module.addInst("s_mov_b32", qRegSgpr, sgpr(tmpSgpr), "quotient")
         if doRemainder:
-            kStr += inst("s_mul_i32", sgpr(tmpSgpr), qRegSgpr, hex(divisor), "quotient*divisor")
-            kStr += inst("s_sub_u32", sgpr(rReg), dRegSgpr, sgpr(tmpSgpr), "rReg = dividend - quotient*divisor")
-    return kStr
+            module.addInst("s_mul_i32", sgpr(tmpSgpr), qRegSgpr, hex(divisor), "quotient*divisor")
+            module.addInst("s_sub_u32", sgpr(rReg), dRegSgpr, sgpr(tmpSgpr), "rReg = dividend - quotient*divisor")
+    return module
 
 ########################################
 # Scalar Magic Div
@@ -271,23 +272,23 @@ def staticMultiply(product, operand, multiplier, tmpSgpr=None, comment=""):
     if comment == "":
         comment = "%s = %s * %s" % (product, operand, multiplier)
 
+    module = Module("staticMultiply")
     if multiplier == 0:
-            return inst("v_mov_b32", product, hex(multiplier), comment)
+        module.addInst("v_mov_b32", product, hex(multiplier), comment)
     elif ((multiplier & (multiplier - 1)) == 0): # pow of 2
         multiplier_log2 = log2(multiplier)
         if multiplier_log2==0 and product == operand:
-            return instCommentOnly(comment + " (multiplier is 1, do nothing)")
+            module.addInst("", comment + " (multiplier is 1, do nothing)")
         else:
-            return inst("v_lshlrev_b32", product, hex(multiplier_log2), operand, comment)
+            module.addInst("v_lshlrev_b32", product, hex(multiplier_log2), operand, comment)
     else:
-        kStr = ""
         if product == operand:
-            kStr += inst("s_mov_b32", tmpSgpr, hex(multiplier), comment)
-            kStr += inst("v_mul_lo_u32", product, tmpSgpr, operand, comment)
+            module.addInst("s_mov_b32", tmpSgpr, hex(multiplier), comment)
+            module.addInst("v_mul_lo_u32", product, tmpSgpr, operand, comment)
         else:
-            kStr += inst("v_mov_b32", product, hex(multiplier), comment)
-            kStr += inst("v_mul_lo_u32", product, product, operand, comment)
-        return kStr
+            module.addInst("v_mov_b32", product, hex(multiplier), comment)
+            module.addInst("v_mul_lo_u32", product, product, operand, comment)
+    return module
 
 
 ########################################

@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import ComputeStoreVgprs
 from ..AsmUtils import log2, staticMultiply, vgpr, sgpr, inst, vectorStaticDivide, vectorStaticRemainder
 
@@ -61,48 +62,48 @@ class ComputeStoreVgprsMFMA(ComputeStoreVgprs):
         # matrixInstM = kernel["MatrixInstM"] * kernel["MatrixInstBM"] if (kernel["MatrixInstM"] == 4) else kernel["MatrixInstM"]
         matrixInstN = kernel["MatrixInstN"] * kernel["MatrixInstBN"] if (kernel["MatrixInstN"] == 4) else kernel["MatrixInstN"]
 
-        kStr = ""
+        module = Code.Module("ComputeStoreVgprsMFMA")
 
         # coord 1 : wave part
-        kStr += vectorStaticDivide(wave_id, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr)
-        kStr += vectorStaticDivide(tid1, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr)
-        kStr += inst("v_mul_lo_u32", vgpr(tid1), hex(MIBShape1), vgpr(tid1), "wave coordination offset 1")
+        module.addCode(vectorStaticDivide(wave_id, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr))
+        module.addCode(vectorStaticDivide(tid1, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr))
+        module.addInst("v_mul_lo_u32", vgpr(tid1), hex(MIBShape1), vgpr(tid1), "wave coordination offset 1")
 
         # coord 1 : thread part
-        kStr += vectorStaticRemainder(dummy, tmpVgpr0, "Serial", matrixInstN, tmpVgpr1, tmpSgpr)
-        kStr += inst("_v_add_u32", vgpr(tid1), vgpr(tmpVgpr0), vgpr(tid1), "coordination 1 = wave_id1 + tid1")
+        module.addCode(vectorStaticRemainder(dummy, tmpVgpr0, "Serial", matrixInstN, tmpVgpr1, tmpSgpr))
+        module.addInst("_v_add_u32", vgpr(tid1), vgpr(tmpVgpr0), vgpr(tid1), "coordination 1 = wave_id1 + tid1")
 
         # coord 1 : offset part
         packedC1 = kernel["PackedC1IndicesX"]
         strideC1 = "StrideC%s" % (writer.indexChars[packedC1[0]])
         strideD1 = "StrideD%s" % (writer.indexChars[packedC1[0]])
-        kStr += inst("v_mul_lo_u32", vgpr(writer.cinRowPtr), vgpr(tid1), sgpr(strideC1), " offset 1")
-        kStr += inst("v_mul_lo_u32", vgpr(writer.coutRowPtr), vgpr(tid1), sgpr(strideD1), " offset 1")
+        module.addInst("v_mul_lo_u32", vgpr(writer.cinRowPtr), vgpr(tid1), sgpr(strideC1), " offset 1")
+        module.addInst("v_mul_lo_u32", vgpr(writer.coutRowPtr), vgpr(tid1), sgpr(strideD1), " offset 1")
 
         # coord 0 : wave part
-        kStr += vectorStaticRemainder(dummy, tmpVgpr0, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr)
-        kStr += inst("v_mul_lo_u32", vgpr(tmpVgpr0), hex(MIBShape0), vgpr(tmpVgpr0), "wave coordination offset 0")
+        module.addCode(vectorStaticRemainder(dummy, tmpVgpr0, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr))
+        module.addInst("v_mul_lo_u32", vgpr(tmpVgpr0), hex(MIBShape0), vgpr(tmpVgpr0), "wave coordination offset 0")
 
         # coord 0 : thread part
-        kStr += vectorStaticRemainder(dummy, tid0, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr)
-        kStr += vectorStaticDivide(tid0, tid0, matrixInstN, tmpVgpr1, tmpSgpr)
-        kStr += staticMultiply(vgpr(tid0), vgpr(tid0), kernel["MIOutputVectorWidth"], sgpr(tmpSgpr), "thread0 * continuous_output")
-        kStr += inst("_v_add_u32", vgpr(tid0), vgpr(tmpVgpr0), vgpr(tid0), "coordination 0 = wave_id0 + tid0")
+        module.addCode(vectorStaticRemainder(dummy, tid0, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr))
+        module.addCode(vectorStaticDivide(tid0, tid0, matrixInstN, tmpVgpr1, tmpSgpr))
+        module.addCode(staticMultiply(vgpr(tid0), vgpr(tid0), kernel["MIOutputVectorWidth"], sgpr(tmpSgpr), "thread0 * continuous_output"))
+        module.addInst("_v_add_u32", vgpr(tid0), vgpr(tmpVgpr0), vgpr(tid0), "coordination 0 = wave_id0 + tid0")
 
         wg0="WorkGroup0"
         wg1="WorkGroup1"
 
         # macro tile 0 part
-        kStr += inst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile0"], sgpr(wg0), "wgp0 * MT0")
-        kStr += inst("_v_add_u32", vgpr(tid0), sgpr(tmpSgpr), vgpr(tid0), "coord 0 = (tid0/MI_m)*4 + waveG0*MIB_m + MT0*SG0")
+        module.addInst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile0"], sgpr(wg0), "wgp0 * MT0")
+        module.addInst("_v_add_u32", vgpr(tid0), sgpr(tmpSgpr), vgpr(tid0), "coord 0 = (tid0/MI_m)*4 + waveG0*MIB_m + MT0*SG0")
 
         # macro tile 1 part
-        kStr += inst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile1"], sgpr(wg1), "wgp1 * MT1")
-        kStr += inst("_v_add_u32", vgpr(tid1), sgpr(tmpSgpr), vgpr(tid1), "coord 1 = (tid0%MI_m) + waveG1*MIB_n + MT1*SG1")
+        module.addInst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile1"], sgpr(wg1), "wgp1 * MT1")
+        module.addInst("_v_add_u32", vgpr(tid1), sgpr(tmpSgpr), vgpr(tid1), "coord 1 = (tid0%MI_m) + waveG1*MIB_n + MT1*SG1")
 
         # extract packed rowStart vgpr
         if len(packedC1) > 1:
-          kStr += writer.extractPackedCoord1ToRowStart(kernel, packedC1, tid1, 'D')
+          module.addCode(writer.extractPackedCoord1ToRowStart(kernel, packedC1, tid1, 'D'))
 
         # release resource
         writer.vgprPool.checkIn(dummy)
@@ -115,12 +116,12 @@ class ComputeStoreVgprsMFMA(ComputeStoreVgprs):
         # 2. local write address
         # 3. global write coord0 and coord1
         if kernel["StoreRemapVectorWidth"]:
-            kStr += writer.storeRemapComputeStoreVgprs(kernel)
+            module.addCode(writer.storeRemapComputeStoreVgprs(kernel))
 
         writer.coord0 = tid0
         writer.coord1 = tid1
 
-        return kStr
+        return module
 
 class ComputeStoreVgprsMFMASwap(ComputeStoreVgprs):
     kernel = {"EnableMatrixInstruction": True,
@@ -161,47 +162,47 @@ class ComputeStoreVgprsMFMASwap(ComputeStoreVgprs):
         matrixInstM = kernel["MatrixInstM"] * kernel["MatrixInstBM"] if (kernel["MatrixInstM"] == 4) else kernel["MatrixInstM"]
         # matrixInstN = kernel["MatrixInstN"] * kernel["MatrixInstBN"] if (kernel["MatrixInstN"] == 4) else kernel["MatrixInstN"]
 
-        kStr = ""
+        module = Code.Module("ComputeStoreVgprsMFMASwap")
 
-        kStr += vectorStaticDivide(wave_id, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr)
+        module.addCode(vectorStaticDivide(wave_id, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr))
 
         # coord 1 : wave part
-        kStr += vectorStaticDivide(tmpVgpr0, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr)
-        kStr += inst("v_mul_lo_u32", vgpr(tmpVgpr0), hex(MIBShape1), vgpr(tmpVgpr0), "wave coordination offset 1")
+        module.addCode(vectorStaticDivide(tmpVgpr0, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr))
+        module.addInst("v_mul_lo_u32", vgpr(tmpVgpr0), hex(MIBShape1), vgpr(tmpVgpr0), "wave coordination offset 1")
 
         # coord 1 : thread part
-        kStr += vectorStaticRemainder(dummy, tid1, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr)
-        kStr += vectorStaticDivide(tid1, tid1, matrixInstM, tmpVgpr1, tmpSgpr)
-        kStr += staticMultiply(vgpr(tid1), vgpr(tid1), kernel["MIOutputVectorWidth"], sgpr(tmpSgpr), "thread0 * continuous_output")
-        kStr += inst("v_add_u32", vgpr(tid1), vgpr(tmpVgpr0), vgpr(tid1), "coordination 1 = wave_id1 + tid1")
+        module.addCode(vectorStaticRemainder(dummy, tid1, "Serial", writer.kernel["WavefrontSize"], tmpVgpr1, tmpSgpr))
+        module.addCode(vectorStaticDivide(tid1, tid1, matrixInstM, tmpVgpr1, tmpSgpr))
+        module.addCode(staticMultiply(vgpr(tid1), vgpr(tid1), kernel["MIOutputVectorWidth"], sgpr(tmpSgpr), "thread0 * continuous_output"))
+        module.addInst("v_add_u32", vgpr(tid1), vgpr(tmpVgpr0), vgpr(tid1), "coordination 1 = wave_id1 + tid1")
         if writer.allowLRVWforTLUandMI and writer.lrvwB > 1:
-          kStr += staticMultiply(vgpr(tid1), vgpr(tid1), writer.lrvwB, sgpr(tmpSgpr), "coordination 1 *= lrvwB")
+          module.addCode(staticMultiply(vgpr(tid1), vgpr(tid1), writer.lrvwB, sgpr(tmpSgpr), "coordination 1 *= lrvwB"))
 
         # coord 1 : offset part
         packedC1 = kernel["PackedC1IndicesX"]
         strideC1 = "StrideC%s" % (writer.indexChars[packedC1[0]])
         strideD1 = "StrideD%s" % (writer.indexChars[packedC1[0]])
-        kStr += inst("v_mul_lo_u32", vgpr(writer.cinRowPtr), vgpr(tid1), sgpr(strideC1), " offset 1")
-        kStr += inst("v_mul_lo_u32", vgpr(writer.coutRowPtr), vgpr(tid1), sgpr(strideD1), " offset 1")
+        module.addInst("v_mul_lo_u32", vgpr(writer.cinRowPtr), vgpr(tid1), sgpr(strideC1), " offset 1")
+        module.addInst("v_mul_lo_u32", vgpr(writer.coutRowPtr), vgpr(tid1), sgpr(strideD1), " offset 1")
 
         # coord 0 : wave part
-        kStr += vectorStaticRemainder(dummy, tid0, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr)
-        kStr += inst("v_mul_lo_u32", vgpr(tid0), hex(MIBShape0), vgpr(tid0), "wave coordination offset 0")
+        module.addCode(vectorStaticRemainder(dummy, tid0, wave_id, kernel["MIWaveGroup"][0], tmpVgpr1, tmpSgpr))
+        module.addInst("v_mul_lo_u32", vgpr(tid0), hex(MIBShape0), vgpr(tid0), "wave coordination offset 0")
 
         # coord 0 : thread part
-        kStr += vectorStaticRemainder(dummy, tmpVgpr0, "Serial", matrixInstM, tmpVgpr1, tmpSgpr)
-        kStr += inst("_v_add_lshl_u32", vgpr(tid0), vgpr(tmpVgpr0), vgpr(tid0), log2(kernel["VectorWidth"]), "coordination 0 = wave_id0 + tid0")
+        module.addCode(vectorStaticRemainder(dummy, tmpVgpr0, "Serial", matrixInstM, tmpVgpr1, tmpSgpr))
+        module.addInst("_v_add_lshl_u32", vgpr(tid0), vgpr(tmpVgpr0), vgpr(tid0), log2(kernel["VectorWidth"]), "coordination 0 = wave_id0 + tid0")
 
         wg0="WorkGroup0"
         wg1="WorkGroup1"
 
         # macro tile 0 part
-        kStr += inst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile0"], sgpr(wg0), "wgp0 * MT0")
-        kStr += inst("v_add_u32", vgpr(tid0), sgpr(tmpSgpr), vgpr(tid0), "coord 0 = (tid0/MI_m)*4 + waveG0*MIB_m + MT0*SG0")
+        module.addInst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile0"], sgpr(wg0), "wgp0 * MT0")
+        module.addInst("v_add_u32", vgpr(tid0), sgpr(tmpSgpr), vgpr(tid0), "coord 0 = (tid0/MI_m)*4 + waveG0*MIB_m + MT0*SG0")
 
         # macro tile 1 part
-        kStr += inst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile1"], sgpr(wg1), "wgp1 * MT1")
-        kStr += inst("v_add_u32", vgpr(tid1), sgpr(tmpSgpr), vgpr(tid1), "coord 1 = (tid0%MI_m) + waveG1*MIB_n + MT1*SG1")
+        module.addInst("s_mul_i32", sgpr(tmpSgpr), kernel["MacroTile1"], sgpr(wg1), "wgp1 * MT1")
+        module.addInst("v_add_u32", vgpr(tid1), sgpr(tmpSgpr), vgpr(tid1), "coord 1 = (tid0%MI_m) + waveG1*MIB_n + MT1*SG1")
 
         # release resource
         writer.vgprPool.checkIn(dummy)
@@ -214,9 +215,9 @@ class ComputeStoreVgprsMFMASwap(ComputeStoreVgprs):
         # 2. local write address
         # 3. global write coord0 and coord1
         if kernel["StoreRemapVectorWidth"]:
-            kStr += writer.storeRemapComputeStoreVgprs(kernel)
+            module.addCode(writer.storeRemapComputeStoreVgprs(kernel))
 
         writer.coord0 = tid0
         writer.coord1 = tid1
 
-        return kStr
+        return module

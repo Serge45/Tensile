@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from . import Code
 from .Common import print2, printExit, printWarning
 from .Utils import roundUpToNearestMultiple
 from .AsmUtils import inst, vgpr, sgpr
@@ -193,20 +194,20 @@ class RegisterPool:
       return start
 
   def initTmps(self, initValue, start=0, stop=-1):
-    kStr = ""
+    module = Code.Module("initTmps from RegisterPool")
     stop= len(self.pool) if stop== -1 or stop>len(self.pool) else stop+1
     for i in range(start, stop):
       #if self.type == 's':
       #  print i, self.pool[i].status
       if self.pool[i].status==RegisterPool.Status.Available:
         if self.type == 's':
-          kStr += inst("s_mov_b32", sgpr(i), hex(initValue), "init tmp in pool")
+          module.addInst("s_mov_b32", sgpr(i), hex(initValue), "init tmp in pool")
         elif self.type == 'v':
-          kStr += inst("v_mov_b32", vgpr(i), hex(initValue), "init tmp in pool")
+          module.addInst("v_mov_b32", vgpr(i), hex(initValue), "init tmp in pool")
         else:
           assert(0) # bad regpool type
 
-    return kStr
+    return module
 
   ########################################
   # Check In
