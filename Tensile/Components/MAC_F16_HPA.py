@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import Component, MAC
 from ..DataType import DataType
 
@@ -38,19 +39,19 @@ class FMA_F16_HPA_MAD_MIX_LDL(MAC):
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        module = Code.Module("FMA_F16_HPA_MAD_MIX_LDL")
+        module.addComment(self.commentHeader())
         priority = Component.Priority.find(writer)
 
         vars = {}
 
         if writer.asmCaps["v_fma_mix_f32"]:
-            vars["instruction"] = "v_fma_mix_f32"
+            instruction = "v_fma_mix_f32"
         else:
-            vars["instruction"] = "v_mad_mix_f32"
+            instruction = "v_mad_mix_f32"
 
         vars["m"] = m
         vars["kernel"] = kernel
-        vars["endLine"] = writer.endLine
 
         vars["ThreadTile0"] = kernel["ThreadTile0"]
         vars["ThreadTile1"] = kernel["ThreadTile1"]
@@ -71,56 +72,51 @@ class FMA_F16_HPA_MAD_MIX_LDL(MAC):
 
                 # we treat HighPrecisionAccumulate as expanded packed math
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + 0*2 + 0".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
+                aStr = "v[{aBase0}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase0}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[0,0,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
 
-                vars["aStr"] = "v[{aBase0}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase0}+{blockB}]".format_map(vars)
+                module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[0,0,0] op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
-
-                kStr += priority(writer, 1, "Raise priority while processing macs")
-
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[1,1,0] op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[1,1,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
 
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + 0*2 + 1".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
+                aStr = "v[{aBase1}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase0}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
-                vars["aStr"] = "v[{aBase1}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase0}+{blockB}]".format_map(vars)
-
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[0,0,0] op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[1,1,0] op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[0,0,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[1,1,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
 
 
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + {Half_ThreadTile0}*2 + 0".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
+                aStr = "v[{aBase0}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase1}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
-                vars["aStr"] = "v[{aBase0}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase1}+{blockB}]".format_map(vars)
-
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[0,0,0] op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[1,1,0] op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[0,0,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[1,1,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
 
                 vars["cidx"] = blockA*2 + blockB*kernel["ThreadTile0"]*2 + kernel["ThreadTile0"] + 1
 
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + {Half_ThreadTile0}*2+1".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
+                aStr = "v[{aBase1}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase1}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
-                vars["aStr"] = "v[{aBase1}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase1}+{blockB}]".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[0,0,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
+                module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[1,1,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
+                #module.addCode(writer.bomb(-13))
 
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[0,0,0] op_sel_hi:[1,1,0] //valuC[{cidx}]{endLine}".format_map(vars)
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[1,1,0] op_sel_hi:[1,1,0] //valuC[{cidx}]{endLine}".format_map(vars)
-                #kStr += writer.bomb(-13)
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
 
-        kStr += priority(writer, 0, "Reset priority after macs")
-
-        return kStr
+        return module
 
 
 class FMA_F16_HPA_MAD_MIX(MAC):
@@ -134,19 +130,19 @@ class FMA_F16_HPA_MAD_MIX(MAC):
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        module = Code.Module("FMA_F16_HPA_MAD_MIX")
+        module.addComment(self.commentHeader())
         priority = Component.Priority.find(writer)
 
         vars = {}
 
         if writer.asmCaps["v_fma_mix_f32"]:
-            vars["instruction"] = "v_fma_mix_f32"
+            instruction = "v_fma_mix_f32"
         else:
-            vars["instruction"] = "v_mad_mix_f32"
+            instruction = "v_mad_mix_f32"
 
         vars["m"] = m
         vars["kernel"] = kernel
-        vars["endLine"] = writer.endLine
 
         vars["ThreadTile0"] = kernel["ThreadTile0"]
         vars["ThreadTile1"] = kernel["ThreadTile1"]
@@ -167,38 +163,34 @@ class FMA_F16_HPA_MAD_MIX(MAC):
                     vars["bBase"] = "vgprValuB_X{m}_I{iui}".format_map(vars)
 
                     vars["cIdxExpr"] = "{block0}*2 + {block1}*{ThreadTile0}*2 + 0*2 + 0".format_map(vars)
-                    vars["cidx"] = eval(vars["cIdxExpr"])
+                    cidx = eval(vars["cIdxExpr"])
+                    cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
+                    aStr = "v[{aBase}+{blockA}]".format_map(vars)
+                    bStr = "v[{bBase}+{blockB}]".format_map(vars)
+                    module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[0,0,0]", "op_sel_hi:[1,1,0]", "ValuC[%u] iui=%u" % (cidx, vars["iui"]))
 
-                    vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
-                    vars["aStr"] = "v[{aBase}+{blockA}]".format_map(vars)
-                    vars["bStr"] = "v[{bBase}+{blockB}]".format_map(vars)
-                    kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[0,0,0] op_sel_hi:[1,1,0] //ValuC[{cidx}] iui={iui}{endLine}".format_map(vars)
-
-                    kStr += priority(writer, 1, "Raise priority while processing macs")
+                    module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
                     vars["cIdxExpr"] = "{block0}*2 + {block1}*{ThreadTile0}*2 + 0*2 + 1".format_map(vars)
-                    vars["cidx"] = eval(vars["cIdxExpr"])
-
-                    vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
-                    vars["opSel"] = "op_sel:[1,0,0]" if writer.tPA["tileIdx"] == 0 else "op_sel:[0,1,0]"
-                    kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} {opSel} op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
+                    cidx  = eval(vars["cIdxExpr"])
+                    cStr  = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
+                    opSel = "op_sel:[1,0,0]" if writer.tPA["tileIdx"] == 0 else "op_sel:[0,1,0]"
+                    module.addInst(instruction, cStr, aStr, bStr, cStr, opSel, "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
 
                     vars["cIdxExpr"] = "{block0}*2 + {block1}*{ThreadTile0}*2 + {Half_ThreadTile0}*2 + 0".format_map(vars)
-                    vars["cidx"] = eval(vars["cIdxExpr"])
-
-                    vars["cStr"] = "v[vgprValuC+{cIdxExpr}]".format_map(vars)
-                    vars["opSel"] = "op_sel:[0,1,0]" if writer.tPA["tileIdx"] == 0 else "op_sel:[1,0,0]"
-                    kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} {opSel} op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
+                    cidx  = eval(vars["cIdxExpr"])
+                    cStr  = "v[vgprValuC+{cIdxExpr}]".format_map(vars)
+                    opSel = "op_sel:[0,1,0]" if writer.tPA["tileIdx"] == 0 else "op_sel:[1,0,0]"
+                    module.addInst(instruction, cStr, aStr, bStr, cStr, opSel, "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
 
                     vars["cIdxExpr"] = "{block0}*2+{block1}*{ThreadTile0}*2+{Half_ThreadTile0}*2+1".format_map(vars)
-                    vars["cidx"] = eval(vars["cIdxExpr"])
+                    cidx = eval(vars["cIdxExpr"])
+                    cStr = "v[vgprValuC+{cIdxExpr}]".format_map(vars)
+                    module.addInst(instruction, cStr, aStr, bStr, cStr, "op_sel:[1,1,0]", "op_sel_hi:[1,1,0]", "ValuC[%u]" % cidx)
 
-                    vars["cStr"] = "v[vgprValuC+{cIdxExpr}]".format_map(vars)
-                    kStr += "{instruction} {cStr}, {aStr}, {bStr}, {cStr} op_sel:[1,1,0] op_sel_hi:[1,1,0] //ValuC[{cidx}]{endLine}".format_map(vars)
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
 
-        kStr += priority(writer, 0, "Reset priority after macs")
-
-        return kStr
+        return module
 
 class FMA_F16_DOT2(MAC):
     asmCaps = lambda caps: caps["v_dot2c_f32_f16"] or caps["v_dot2_f32_f16"]
@@ -211,7 +203,8 @@ class FMA_F16_DOT2(MAC):
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        module = Code.Module("FMA_F16_DOT2")
+        module.addComment(self.commentHeader())
 
         accumulate = writer.asmCaps["v_dot2c_f32_f16"]
 
@@ -220,20 +213,19 @@ class FMA_F16_DOT2(MAC):
         vars = {}
 
         if accumulate:
-            vars["instruction"] = "_v_dot2acc_f32_f16"
+            instruction = "_v_dot2acc_f32_f16"
         else:
-            vars["instruction"] = "v_dot2_f32_f16"
+            instruction = "v_dot2_f32_f16"
 
         vars["m"] = m
         vars["kernel"] = kernel
-        vars["endLine"] = writer.endLine
 
         vars["ThreadTile0"] = kernel["ThreadTile0"]
         vars["ThreadTile1"] = kernel["ThreadTile1"]
 
         vars["Half_ThreadTile0"] = kernel["ThreadTile0"] // 2
         vars["Half_ThreadTile1"] = kernel["ThreadTile1"] // 2
-        vars["cSrc"] = ""
+        cSrc = ""
 
         for blockB in range(0, kernel["ThreadTile1"]//2):
             for blockA in range(0, kernel["ThreadTile0"]//2):
@@ -248,56 +240,48 @@ class FMA_F16_DOT2(MAC):
 
                 # we treat HighPrecisionAccumulate as expanded packed math
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + 0*2 + 0".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
+                aStr = "v[{aBase0}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase0}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars) # *2 b/c of fp32
-                vars["aStr"] = "v[{aBase0}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase0}+{blockB}]".format_map(vars)
+                cSrc = cStr if not accumulate else ""
 
-                if not accumulate:
-                    vars["cSrc"] = ", {cStr}".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cSrc, "ValuC[%u]" % cidx)
 
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}{cSrc} //ValuC[{cidx}]{endLine}".format_map(vars)
-
-                kStr += priority(writer, 1, "Raise priority while processing macs")
+                module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + 0*2 + 1".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
+                aStr = "v[{aBase1}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase0}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
-                vars["aStr"] = "v[{aBase1}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase0}+{blockB}]".format_map(vars)
+                cSrc = cStr if not accumulate else ""
 
-                if not accumulate:
-                    vars["cSrc"] = ", {cStr}".format_map(vars)
-
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}{cSrc} //ValuC[{cidx}]{endLine}".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cSrc, "ValuC[%u]" % cidx)
 
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + {Half_ThreadTile0}*2 + 0".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
+                aStr = "v[{aBase0}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase1}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
-                vars["aStr"] = "v[{aBase0}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase1}+{blockB}]".format_map(vars)
+                cSrc = cStr if not accumulate else ""
 
-                if not accumulate:
-                    vars["cSrc"] = ", {cStr}".format_map(vars)
-
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}{cSrc} //ValuC[{cidx}]{endLine}".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cSrc, "ValuC[%u]" % cidx)
 
                 vars["cIdxExpr"] = "{blockA}*2 + {blockB}*{ThreadTile0}*2 + {Half_ThreadTile0}*2 + 1".format_map(vars)
-                vars["cidx"] = eval(vars["cIdxExpr"])
+                cidx = eval(vars["cIdxExpr"])
+                cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
+                aStr = "v[{aBase1}+{blockA}]".format_map(vars)
+                bStr = "v[{bBase1}+{blockB}]".format_map(vars)
 
-                vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
-                vars["aStr"] = "v[{aBase1}+{blockA}]".format_map(vars)
-                vars["bStr"] = "v[{bBase1}+{blockB}]".format_map(vars)
+                cSrc = cStr if not accumulate else ""
 
-                if not accumulate:
-                    vars["cSrc"] = ", {cStr}".format_map(vars)
+                module.addInst(instruction, cStr, aStr, bStr, cSrc, "ValuC[%u]" % cidx)
+                #module.addCode(writer.bomb(-13))
 
-                kStr += "{instruction} {cStr}, {aStr}, {bStr}{cSrc} //ValuC[{cidx}]{endLine}".format_map(vars)
-                #kStr += writer.bomb(-13)
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
 
-        kStr += priority(writer, 0, "Reset priority after macs")
-
-        return kStr
+        return module

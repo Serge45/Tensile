@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import Component, MAC
 from ..DataType import DataType
 
@@ -28,11 +29,11 @@ class FMA_F64C_Plain(MAC):
 
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
-        kStr = self.commentHeader()
+        module = Code.Module("FMA_F64C_Plain")
+        module.addComment(self.commentHeader())
         priority = Component.Priority.find(writer)
 
         vars = {}
-        vars["endLine"] = writer.endLine
         vars["m"] = m
         vars["ThreadTile0"] = kernel["ThreadTile0"]
 
@@ -43,31 +44,31 @@ class FMA_F64C_Plain(MAC):
                 for iui in range(0, innerUnroll):
                     vars["iui"] = iui
                     # c.real += a.real * b.real
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+0:(vgprValuC+{a}+{b}*{ThreadTile0})*4+1]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*4+0:vgprValuA_X{m}_I{iui}+{a}*4+1]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*4+0:vgprValuB_X{m}_I{iui}+{b}*4+1]".format_map(vars)
-                    kStr += "v_fma_f64 {cStr}, {aStr}, {bStr}, {cStr}{endLine}".format_map(vars)
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+0:(vgprValuC+{a}+{b}*{ThreadTile0})*4+1]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*4+0:vgprValuA_X{m}_I{iui}+{a}*4+1]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*4+0:vgprValuB_X{m}_I{iui}+{b}*4+1]".format_map(vars)
+                    module.addInst("v_fma_f64", cStr, aStr, bStr, cStr, "")
                     # c.real -= a.imag * b.imag
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+0:(vgprValuC+{a}+{b}*{ThreadTile0})*4+1]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*4+2:vgprValuA_X{m}_I{iui}+{a}*4+3]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*4+2:vgprValuB_X{m}_I{iui}+{b}*4+3]".format_map(vars)
-                    vars["sign"] = "-" if (not kernel["ProblemType"]["ComplexConjugateA"] and not kernel["ProblemType"]["ComplexConjugateB"]) or \
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+0:(vgprValuC+{a}+{b}*{ThreadTile0})*4+1]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*4+2:vgprValuA_X{m}_I{iui}+{a}*4+3]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*4+2:vgprValuB_X{m}_I{iui}+{b}*4+3]".format_map(vars)
+                    sign = "-" if (not kernel["ProblemType"]["ComplexConjugateA"] and not kernel["ProblemType"]["ComplexConjugateB"]) or \
                             (kernel["ProblemType"]["ComplexConjugateA"] and kernel["ProblemType"]["ComplexConjugateB"]) else ""
-                    kStr += "v_fma_f64 {cStr}, {aStr}, {sign}{bStr}, {cStr}{endLine}".format_map(vars)
+                    module.addInst("v_fma_f64", cStr, aStr, sign + bStr, cStr, "")
                     # c.imag += a.real * b.imag
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+2:(vgprValuC+{a}+{b}*{ThreadTile0})*4+3]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*4+0:vgprValuA_X{m}_I{iui}+{a}*4+1]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*4+2:vgprValuB_X{m}_I{iui}+{b}*4+3]".format_map(vars)
-                    vars["sign"] = "-" if kernel["ProblemType"]["ComplexConjugateB"] else ""
-                    kStr += "v_fma_f64 {cStr}, {aStr}, {sign}{bStr}, {cStr}{endLine}".format_map(vars)
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+2:(vgprValuC+{a}+{b}*{ThreadTile0})*4+3]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*4+0:vgprValuA_X{m}_I{iui}+{a}*4+1]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*4+2:vgprValuB_X{m}_I{iui}+{b}*4+3]".format_map(vars)
+                    sign = "-" if kernel["ProblemType"]["ComplexConjugateB"] else ""
+                    module.addInst("v_fma_f64", cStr, aStr, sign + bStr, cStr, "")
                     # c.imag += a.imag * b.real
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+2:(vgprValuC+{a}+{b}*{ThreadTile0})*4+3]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*4+2:vgprValuA_X{m}_I{iui}+{a}*4+3]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*4+0:vgprValuB_X{m}_I{iui}+{b}*4+1]".format_map(vars)
-                    vars["sign"] = "-" if kernel["ProblemType"]["ComplexConjugateA"] else ""
-                    kStr += "v_fma_f64 {cStr}, {sign}{aStr}, {bStr}, {cStr}{endLine}".format_map(vars)
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*4+2:(vgprValuC+{a}+{b}*{ThreadTile0})*4+3]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*4+2:vgprValuA_X{m}_I{iui}+{a}*4+3]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*4+0:vgprValuB_X{m}_I{iui}+{b}*4+1]".format_map(vars)
+                    sign = "-" if kernel["ProblemType"]["ComplexConjugateA"] else ""
+                    module.addInst("v_fma_f64", cStr, sign + aStr, bStr, cStr, "")
 
-                    kStr += priority(writer, 1, "Raise priority while processing macs")
+                    module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
-        kStr += priority(writer, 0, "Reset priority after macs")
-        return kStr
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
+        return module

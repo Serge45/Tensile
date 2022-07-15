@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import Component
 
 class Priority(Component):
@@ -34,7 +35,7 @@ class ConstantPriority(Priority):
     kernel = {"AggressivePerfMode": False}
 
     def __call__(self, writer, prio, message=""):
-        return ""
+        return Code.TextBlock("// ConstantPriority (Empty)")
 
 class AggressivePriority(Priority):
     """
@@ -53,6 +54,5 @@ class AggressivePriority(Priority):
             return ""
 
         self.currentPrio = prio
-        vars = {"endLine": writer.endLine, "prio": prio, "message": message}
 
-        return "s_setprio {prio} // {message}{endLine}".format_map(vars)
+        return Code.Inst("s_setprio", prio, message)

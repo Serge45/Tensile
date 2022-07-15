@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import Component, MAC
 from ..DataType import DataType
 
@@ -36,7 +37,8 @@ class MAC_F16_Plain(MAC):
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        module = Code.Module("MAC_F16_Plain")
+        module.addComment(self.commentHeader())
 
         priority = Component.Priority.find(writer)
 
@@ -44,7 +46,6 @@ class MAC_F16_Plain(MAC):
 
         vars["m"] = m
         vars["kernel"] = kernel
-        vars["endLine"] = writer.endLine
 
         vars["ThreadTile0"] = kernel["ThreadTile0"]
         vars["ThreadTile1"] = kernel["ThreadTile1"]
@@ -61,14 +62,14 @@ class MAC_F16_Plain(MAC):
                             vars["blockB"] = blockB
                             vars["iui"] = iui
 
-                            vars["cStr"] = "v[vgprValuC+{blockA}+{blockB}*{ThreadTile0}+0]".format_map(vars)
-                            vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{blockA}]".format_map(vars)
-                            vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{blockB}]".format_map(vars)
-                            kStr += "v_mac_f16 {cStr}, {aStr}, {bStr}{endLine}".format_map(vars)
-                            kStr += priority(writer, 1, "Raise priority while processing macs")
+                            cStr = "v[vgprValuC+{blockA}+{blockB}*{ThreadTile0}+0]".format_map(vars)
+                            aStr = "v[vgprValuA_X{m}_I{iui}+{blockA}]".format_map(vars)
+                            bStr = "v[vgprValuB_X{m}_I{iui}+{blockB}]".format_map(vars)
+                            module.addInst("v_mac_f16", cStr, aStr, bStr, "")
+                            module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
-        kStr += priority(writer, 0, "Reset priority after macs")
-        return kStr
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
+        return module
 
 
 class FMA_F16_NonPacked(MAC):
@@ -81,14 +82,15 @@ class FMA_F16_NonPacked(MAC):
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        module = Code.Module("FMA_F16_NonPacked")
+        module.addComment(self.commentHeader())
+
         priority = Component.Priority.find(writer)
 
         vars = {}
 
         vars["m"] = m
         vars["kernel"] = kernel
-        vars["endLine"] = writer.endLine
 
         vars["ThreadTile0"] = kernel["ThreadTile0"]
         vars["ThreadTile1"] = kernel["ThreadTile1"]
@@ -103,26 +105,24 @@ class FMA_F16_NonPacked(MAC):
                     vars["blockB"] = blockB
                     vars["iui"] = iui
 
-                    vars["cIdxExpr0"] = "{blockA} + {blockB}*{ThreadTile0} + 0".format_map(vars)
-                    vars["cIdxVal0"] = eval(vars["cIdxExpr0"])
-                    vars["cStr0"] = "v[vgprValuC + {cIdxExpr0}]".format_map(vars)
+                    cIdxExpr0 = "{blockA} + {blockB}*{ThreadTile0} + 0".format_map(vars)
+                    cStr0 = "v[vgprValuC + {}]".format(eval(cIdxExpr0))
 
                     # /2 b/c of 2 f16's per 32-bit vgpr
-                    vars["cIdxExpr1"] = "{blockA} + {blockB}*{ThreadTile0} + {Half_ThreadTile0}".format_map(vars)
-                    vars["cIdxVal1"] = eval(vars["cIdxExpr1"])
-                    vars["cStr1"] = "v[vgprValuC + {cIdxExpr1}]".format_map(vars)
+                    cIdxExpr1 = "{blockA} + {blockB}*{ThreadTile0} + {Half_ThreadTile0}".format_map(vars)
+                    cStr1 = "v[vgprValuC + {}]".format(eval(cIdxExpr1))
 
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui} + {blockA}]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui} + {blockB}]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui} + {blockA}]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui} + {blockB}]".format_map(vars)
 
-                    kStr += "v_fma_f16 {cStr0}, {aStr}, {bStr}, {cStr0} op_sel:[0,0,0,0] // {cIdxExpr0}{endLine}".format_map(vars)
-                    kStr += priority(writer, 1, "Raise priority while processing macs")
-                    kStr += "v_fma_f16 {cStr1}, {aStr}, {bStr}, {cStr1} op_sel:[0,1,0,0] // {cIdxExpr1}{endLine}".format_map(vars)
-                    kStr += "v_fma_f16 {cStr0}, {aStr}, {bStr}, {cStr0} op_sel:[1,0,1,1] // {cIdxExpr0}{endLine}".format_map(vars)
-                    kStr += "v_fma_f16 {cStr1}, {aStr}, {bStr}, {cStr1} op_sel:[1,1,1,1] // {cIdxExpr1}{endLine}".format_map(vars)
+                    module.addInst("v_fma_f16", cStr0, aStr, bStr, cStr0, "op_sel:[0,0,0,0]", cIdxExpr0)
+                    module.addCode(priority(writer, 1, "Raise priority while processing macs"))
+                    module.addInst("v_fma_f16", cStr1, aStr, bStr, cStr1, "op_sel:[0,1,0,0]", cIdxExpr1)
+                    module.addInst("v_fma_f16", cStr0, aStr, bStr, cStr0, "op_sel:[1,0,1,1]", cIdxExpr0)
+                    module.addInst("v_fma_f16", cStr1, aStr, bStr, cStr1, "op_sel:[1,1,1,1]", cIdxExpr1)
 
-        kStr += priority(writer, 0, "Reset priority after macs")
-        return kStr
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
+        return module
 
 class FMA_F16_Packed(MAC):
     asmCaps = {"v_pk_fma_f16": True}
@@ -133,14 +133,15 @@ class FMA_F16_Packed(MAC):
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        module = Code.Module("FMA_F16_Packed")
+        module.addComment(self.commentHeader())
+
         priority = Component.Priority.find(writer)
 
         vars = {}
 
         vars["m"] = m
         vars["kernel"] = kernel
-        vars["endLine"] = writer.endLine
 
         vars["ThreadTile0"] = kernel["ThreadTile0"]
         vars["ThreadTile1"] = kernel["ThreadTile1"]
@@ -155,25 +156,23 @@ class FMA_F16_Packed(MAC):
                     vars["blockB"] = blockB
                     vars["iui"] = iui
 
-                    vars["cIdxExpr"] = "{blockA} + {blockB}*{ThreadTile0} + 0".format_map(vars)
-                    vars["cIdxVal"] = eval(vars["cIdxExpr"])
+                    cIdxExpr = "{blockA} + {blockB}*{ThreadTile0} + 0".format_map(vars)
 
                     # /2 b/c of 2 f16's per 32-bit vgpr
-                    vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
+                    cStr = "v[vgprValuC + {}]".format(eval(cIdxExpr))
 
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui} + {blockA}]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui} + {blockB}]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui} + {blockA}]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui} + {blockB}]".format_map(vars)
 
-                    kStr += "v_pk_fma_f16 {cStr}, {aStr}, {bStr}, {cStr} op_sel:[0,0,0] op_sel_hi:[1,0,1] // {cIdxVal}{endLine}".format_map(vars)
+                    module.addInst("v_pk_fma_f16", cStr, aStr, bStr, cStr, "op_sel:[0,0,0]", "op_sel_hi:[1,0,1]", cIdxExpr)
+                    module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
-                    kStr += priority(writer, 1, "Raise priority while processing macs")
+                    cIdxExpr = "{blockA} + {blockB}*{ThreadTile0} + {Half_ThreadTile0}".format_map(vars)
+                    cIdxVal  = eval(vars["cIdxExpr"])
 
-                    vars["cIdxExpr"] = "{blockA} + {blockB}*{ThreadTile0} + {Half_ThreadTile0}".format_map(vars)
-                    vars["cIdxVal"] = eval(vars["cIdxExpr"])
+                    cStr = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
 
-                    vars["cStr"] = "v[vgprValuC + {cIdxExpr}]".format_map(vars)
+                    module.addInst("v_pk_fma_f16", cStr, aStr, bStr, cStr, "op_sel:[0,1,0]", "op_sel_hi:[1,1,1]", cIdxExpr)
 
-                    kStr += "v_pk_fma_f16 {cStr}, {aStr}, {bStr}, {cStr} op_sel:[0,1,0] op_sel_hi:[1,1,1] // {cIdxVal}{endLine}".format_map(vars)
-
-        kStr += priority(writer, 0, "Reset priority after macs")
-        return kStr
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
+        return module

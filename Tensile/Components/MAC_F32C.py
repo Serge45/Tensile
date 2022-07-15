@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import Component, MAC
 from ..DataType import DataType
 
@@ -27,11 +28,11 @@ class MAC_F32C_Plain(MAC):
 
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
-        kStr = self.commentHeader()
+        module = Code.Module("MAC_F32C_Plain")
+        module.addComment(self.commentHeader())
         priority = Component.Priority.find(writer)
 
         vars = {}
-        vars["endLine"] = writer.endLine
         vars["m"] = m
         vars["ThreadTile0"] = kernel["ThreadTile0"]
 
@@ -42,30 +43,30 @@ class MAC_F32C_Plain(MAC):
                     vars["b"] = b
                     vars["iui"] = iui
 
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*2]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*2]".format_map(vars)
-                    kStr += "_v_mac_f32 {cStr}, {aStr}, {bStr}{endLine}".format_map(vars)
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*2]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*2]".format_map(vars)
+                    module.addInst("_v_mac_f32", cStr, aStr, bStr, "")
 
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
-                    vars["sign"] = "-" if (not kernel["ProblemType"]["ComplexConjugateA"] and not kernel["ProblemType"]["ComplexConjugateB"]) or \
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
+                    sign = "-" if (not kernel["ProblemType"]["ComplexConjugateA"] and not kernel["ProblemType"]["ComplexConjugateB"]) or \
                             (kernel["ProblemType"]["ComplexConjugateA"] and kernel["ProblemType"]["ComplexConjugateB"]) else ""
-                    kStr += "_v_mac_f32 {cStr}, {sign}{aStr}, {bStr}{endLine}".format_map(vars)
+                    module.addInst("_v_mac_f32", cStr, sign + aStr, bStr, "")
 
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*2]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
-                    vars["sign"] = "-" if kernel["ProblemType"]["ComplexConjugateB"] else ""
-                    kStr += "_v_mac_f32 {cStr}, {aStr}, {sign}{bStr}{endLine}".format_map(vars)
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*2]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
+                    sign = "-" if kernel["ProblemType"]["ComplexConjugateB"] else ""
+                    module.addInst("_v_mac_f32", cStr, aStr, sign + bStr, "")
 
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*2]".format_map(vars)
-                    vars["sign"] = "-" if kernel["ProblemType"]["ComplexConjugateA"] else ""
-                    kStr += "_v_mac_f32 {cStr}, {sign}{aStr}, {bStr}{endLine}".format_map(vars)
+                    cStr = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui}+{b}*2]".format_map(vars)
+                    sign = "-" if kernel["ProblemType"]["ComplexConjugateA"] else ""
+                    module.addInst("_v_mac_f32", cStr, sign + aStr, bStr, "")
 
-                    kStr += priority(writer, 1, "Raise priority while processing macs")
-        kStr += priority(writer, 0, "Reset priority after macs")
-        return kStr
+                    module.addCode(priority(writer, 1, "Raise priority while processing macs"))
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
+        return module

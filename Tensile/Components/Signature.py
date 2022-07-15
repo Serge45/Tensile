@@ -41,7 +41,7 @@ class SignatureCOV2(Signature):
     def __call__(self, writer):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        kStr = "// " + self.commentHeader()
 
         # begin kernel descriptor
         kStr += ".hsa_code_object_version %s,0%s" \
@@ -263,7 +263,7 @@ class SignatureCOV3(Signature):
     def __call__(self, writer):
         kernel = writer.kernel
 
-        kStr = self.commentHeader()
+        kStr = "// " + self.commentHeader()
 
         # begin kernel descriptor
         kStr += ".amdgcn_target \"amdgcn-amd-amdhsa--%s\"%s" \

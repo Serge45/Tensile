@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import Component, MAC
 from ..DataType import DataType
 
@@ -28,11 +29,11 @@ class FMA_F64_Plain(MAC):
 
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
-        kStr = self.commentHeader()
+        module = Code.Module("FMA_F64_Plain")
+        module.addComment(self.commentHeader())
         priority = Component.Priority.find(writer)
 
         vars = {}
-        vars["endLine"] = writer.endLine
         vars["m"] = m
         vars["ThreadTile0"] = kernel["ThreadTile0"]
 
@@ -42,11 +43,11 @@ class FMA_F64_Plain(MAC):
                 vars["a"] = a
                 for iui in range(0, innerUnroll):
                     vars["iui"] = iui
-                    vars["cStr"] = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2:(vgprValuC+{a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui}+{a}*2:vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui}+{b}*2:vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
-                    kStr += "v_fma_f64 {cStr}, {aStr}, {bStr}, {cStr}{endLine}".format_map(vars)
-                    kStr += priority(writer, 1, "Raise priority while processing macs")
+                    cStr        = "v[vgprValuC+({a}+{b}*{ThreadTile0})*2:(vgprValuC+{a}+{b}*{ThreadTile0})*2+1]".format_map(vars)
+                    aStr        = "v[vgprValuA_X{m}_I{iui}+{a}*2:vgprValuA_X{m}_I{iui}+{a}*2+1]".format_map(vars)
+                    bStr        = "v[vgprValuB_X{m}_I{iui}+{b}*2:vgprValuB_X{m}_I{iui}+{b}*2+1]".format_map(vars)
+                    module.addInst("v_fma_f64", cStr, aStr, bStr, cStr, "")
+                    module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
-        kStr += priority(writer, 0, "Reset priority after macs")
-        return kStr
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
+        return module

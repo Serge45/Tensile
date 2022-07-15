@@ -19,6 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 
+from .. import Code
 from ..Component import Component, MAC
 from ..DataType import DataType
 
@@ -47,13 +48,13 @@ class MAC_F32_Plain(MAC):
         if not writer.asmCaps[instruction]:
             raise RuntimeError("{} instruction specified but not supported on {}".format(instruction, kernel["ISA"]))
 
-        kStr = self.commentHeader()
+        module = Code.Module("MAC_F32_Plain")
+        module.addComment(self.commentHeader())
 
         vars = {}
 
         vars["m"] = m
         vars["kernel"] = kernel
-        vars["endLine"] = writer.endLine
 
         vars["ThreadTile0"] = kernel["ThreadTile0"]
         vars["ThreadTile1"] = kernel["ThreadTile1"]
@@ -71,17 +72,17 @@ class MAC_F32_Plain(MAC):
                     vars["b"] = idx1 if writer.tPB["tile01Idx"] else idx0
                     vars["iui"] = iui
 
-                    vars["cStr"] = "v[vgprValuC + {idx0} + {idx1}*{ThreadTile0}]".format_map(vars)
-                    vars["aStr"] = "v[vgprValuA_X{m}_I{iui} + {a}]".format_map(vars)
-                    vars["bStr"] = "v[vgprValuB_X{m}_I{iui} + {b}]".format_map(vars)
+                    cStr = "v[vgprValuC + {idx0} + {idx1}*{ThreadTile0}]".format_map(vars)
+                    aStr = "v[vgprValuA_X{m}_I{iui} + {a}]".format_map(vars)
+                    bStr = "v[vgprValuB_X{m}_I{iui} + {b}]".format_map(vars)
 
                     if instruction == "v_fma_f32":
-                        kStr += "v_fma_f32 {cStr}, {aStr}, {bStr}, {cStr}{endLine}".format_map(vars)
+                        module.addInst("v_fma_f32", cStr, aStr, bStr, cStr, "")
                     else:
-                        kStr += "{instruction} {cStr}, {aStr}, {bStr}{endLine}".format_map(vars)
+                        module.addInst(instruction, cStr, aStr, bStr, "")
 
-                    kStr += priority(writer, 1, "Raise priority while processing macs")
+                    module.addCode(priority(writer, 1, "Raise priority while processing macs"))
 
-        kStr += priority(writer, 0, "Reset priority after macs")
+        module.addCode(priority(writer, 0, "Reset priority after macs"))
 
-        return kStr
+        return module
