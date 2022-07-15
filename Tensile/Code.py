@@ -300,6 +300,93 @@ class Module(Item):
   def addTempVgpr(self, vgpr):
     self.tempVgpr = vgpr
 
+def moduleSetNoComma(module, noComma=False):
+  for item in module.items():
+    if isinstance(item, Module):
+      moduleSetNoComma(item)
+    elif isinstance(item, Inst):
+      item.setNoComma(noComma)
+
+class Macro(Item):
+  def __init__(self):
+    self.name = ""
+    self.itemList = []
+    self.macro = ""
+
+  def __init__(self, *args):
+    self.addTitle(*args)
+    self.itemList = []
+
+  def addTitle(self, *args):
+    self.name = args[0]
+    self.macro = Inst(*args, "")
+    self.macro.setNoComma(True)
+
+  def addCode(self, item):
+    """
+    Add specified item to the list of items in the Macro.
+    Item MUST be a Item (not a string) - can use
+    addText(...)) to add a string.
+    All additions to itemList should use this function.
+    Currently only accepts Inst.
+
+    Returns item to facilitate one-line create/add patterns
+    """
+
+    if isinstance(item, Inst):
+      item.parent = self
+      item.setNoComma(True)
+      self.itemList.append(item)
+    elif isinstance(item, TextBlock):
+      item.parent = self
+      self.itemList.append(item)
+    elif isinstance(item, Module):
+      item.parent = self
+      moduleSetNoComma(item, True)
+      self.itemList.append(item)
+    else:
+      assert 0, "unknown item type (%s) for Macro.addCode. item=%s"%(type(item), item)
+    return item
+
+  def addInst(self, *args):
+    """
+    Convenience function to construct a single Inst and add to items
+    """
+    self.addCode(Inst(*args))
+
+  def addComment0(self, comment):
+    """
+    Convenience function to format arg as a comment and add TextBlock item
+    This comment is a single line /* MYCOMMENT  */
+    """
+    self.addCode(TextBlock("/* %s */\n"%comment))
+
+  def prettyPrint(self,indent=""):
+    ostream = ""
+    ostream += '%s%s "%s"\n'%(indent, type(self).__name__, self.name)
+    for i in self.itemList:
+      ostream += i.prettyPrint(indent.replace("|--", "| ") + "|--")
+    return ostream
+
+  def items(self):
+    """
+    Return list of items in the Macro
+    Items may be other Inst
+    """
+    return self.itemList
+
+  def __str__(self):
+    assert(self.macro)
+    s = ""
+    if printModuleNames:
+      s += "// %s { \n" % self.name
+    s += ".macro " + str(self.macro)
+    s += "".join([("    " + str(x)) for x in self.itemList])
+    s += ".endm\n"
+    if printModuleNames:
+      s += "// } %s\n" % self.name
+    return s
+
 class StructuredModule(Module):
   def __init__(self, name=None):
     Module.__init__(self,name)
@@ -374,6 +461,10 @@ class Inst(Item):
     if len(params) > 1:
       self.params = list(param for param in params[1:] if param != "")
     self.outputInlineAsm = False
+    self.noComma = False
+
+  def setNoComma(self, noComma=False):
+    self.noComma = noComma
 
   def setInlineAsmPrintMode(self, mode):
     isinstance(mode, bool)
@@ -381,7 +472,10 @@ class Inst(Item):
 
   def formatWithComment(self, formatting, comment, *args):
     instStr     = formatting %(args)
-    return "%-50s // %s\n" % (instStr, comment)
+    if comment:
+      return "%-50s // %s\n" % (instStr, comment)
+    else:
+      return "%s\n" % (instStr)
 
   def copy(self, inst):
     assert(isinstance(inst, Inst))
@@ -398,7 +492,9 @@ class Inst(Item):
     if len(params) > 1:
       formatting += " %s"
     for i in range(0, len(params)-2):
-      formatting += ", %s"
+      if not self.noComma:
+        formatting += ","
+      formatting += " %s"
     if self.outputInlineAsm:
       formatting += "\\n\\t\""
     return self.formatWithComment(formatting, self.comment, *params)

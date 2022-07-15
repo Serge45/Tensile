@@ -1615,121 +1615,111 @@ class KernelWriterAssembly(KernelWriter):
     """
       Defines cross-architecture compatibility macros.
     """
-    kStr = ""
+    module = Code.Module("VALU macros")
 
-    kStr += ".macro _v_add_co_u32 dst:req, cc:req, src0:req, src1:req, dpp=" + self.endLine
+    macro = Code.Macro("_v_add_co_u32", "dst:req", "cc:req", "src0:req", "src1:req", "dpp=")
     if self.AsmBugs["ExplicitCO"]:
-        kStr += r"   v_add_co_u32 \dst, \cc, \src0, \src1 \dpp" + self.endLine
+        macro.addInst("v_add_co_u32", "\\dst", "\\cc", "\\src0", "\\src1", "\\dpp", "")
     else:
-        kStr += r"   v_add_u32 \dst, \cc, \src0, \src1 \dpp" + self.endLine
-    kStr += ".endm" + self.endLine
+        macro.addInst("v_add_u32", "\\dst", "\\cc", "\\src0", "\\src1", "\\dpp", "")
+    module.addCode(macro)
 
     # add w/o carry-out.  On older arch, vcc is still written
-    kStr += self.endLine
-    kStr += ".macro _v_add_u32 dst:req, src0:req, src1:req, dpp=" + self.endLine
+    macro = Code.Macro("_v_add_u32", "dst:req", "src0:req", "src1:req", "dpp=")
     if self.AsmBugs["ExplicitNC"]:
-        kStr += r"   v_add_nc_u32 \dst, \src0 \src1 \dpp" + self.endLine
+      macro.addInst("v_add_nc_u32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     elif self.AsmBugs["ExplicitCO"]:
-        kStr += r"   v_add_u32 \dst, \src0, \src1 \dpp" + self.endLine
+      macro.addInst("v_add_u32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     else:
-        kStr += r"   v_add_u32 \dst, vcc, \src0, \src1 \dpp" + self.endLine
-    kStr += ".endm" + self.endLine
+      macro.addInst("v_add_u32", "\\dst", "vcc", "\\src0", "\\src1", "\\dpp", "")
+    module.addCode(macro)
 
     # add w/o carry-out.  On older arch, vcc is still written
-    kStr += self.endLine
-    kStr += ".macro _v_add_i32 dst:req, src0:req, src1:req, dpp=" + self.endLine
+    macro = Code.Macro("_v_add_i32", "dst:req", "src0:req", "src1:req", "dpp=")
     if self.AsmBugs["ExplicitNC"]:
-        kStr += r"   v_add_nc_i32 \dst, \src0 \src1 \dpp" + self.endLine
+      macro.addInst("v_add_nc_i32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     elif self.AsmBugs["ExplicitCO"]:
-        kStr += r"   v_add_i32 \dst, \src0, \src1 \dpp" + self.endLine
+      macro.addInst("v_add_i32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     else:
-        kStr += r"   v_add_i32 \dst, vcc, \src0, \src1 \dpp" + self.endLine
-    kStr += ".endm" + self.endLine
+      macro.addInst("v_add_i32", "\\dst", "vcc", "\\src0", "\\src1", "\\dpp", "")
+    module.addCode(macro)
 
-    kStr += self.endLine
-    kStr += ".macro _v_addc_co_u32 dst:req, ccOut:req, src0:req, ccIn:req, src1:req, dpp=" + self.endLine
+    macro = Code.Macro("_v_addc_co_u32", "dst:req", "ccOut:req", "src0:req", "ccIn:req", "src1:req", "dpp=")
     if self.AsmBugs["ExplicitNC"]:
-        kStr += r"   v_add_co_ci_u32 \dst, \ccOut, \src0, \ccIn, \src1 \dpp" + self.endLine
+        macro.addInst("v_add_co_ci_u32" "\\dst", "\\ccOut", "\\src0", "\\ccIn", "\\src1", "\\dpp", "")
     elif self.AsmBugs["ExplicitCO"]:
-        kStr += r"   v_addc_co_u32 \dst, \ccOut, \src0, \ccIn, \src1 \dpp" + self.endLine
+        macro.addInst("v_addc_co_u32", "\\dst", "\\ccOut", "\\src0", "\\ccIn", "\\src1", "\\dpp", "")
     else:
-        kStr += r"   v_addc_u32 \dst, \ccOut, \src0, \ccIn, \src1 \dpp" + self.endLine
-    kStr += ".endm" + self.endLine
+        macro.addInst("v_addc_u32", "\\dst", "\\ccOut", "\\src0", "\\ccIn", "\\src1", "\\dpp", "")
+    module.addCode(macro)
 
-    kStr += self.endLine
-    kStr += ".macro _v_sub_co_u32 dst:req, cc:req, src0:req, src1:req, dpp=" + self.endLine
+    macro = Code.Macro("_v_sub_co_u32", "dst:req", "cc:req", "src0:req", "src1:req", "dpp=")
     if self.AsmBugs["ExplicitCO"]:
-        kStr += r"   v_sub_co_u32 \dst, \cc, \src0, \src1 \dpp" + self.endLine
+        macro.addInst("v_sub_co_u32", "\\dst", "\\cc", "\\src0", "\\src1", "\\dpp", "")
     else:
-        kStr += r"   v_sub_u32 \dst, \cc, \src0, \src1 \dpp" + self.endLine
-    kStr += ".endm" + self.endLine
+        macro.addInst("v_sub_u32", "\\dst", "\\cc", "\\src0", "\\src1", "\\dpp", "")
+    module.addCode(macro)
 
-    kStr += self.endLine
     # sub w/o carry-out.  On older arch, vcc is still written.
-    kStr += ".macro _v_sub_u32 dst:req, src0:req, src1:req, dpp=" + self.endLine
+    macro = Code.Macro("_v_sub_u32", "dst:req", "src0:req", "src1:req", "dpp=")
     if self.AsmBugs["ExplicitNC"]:
-        kStr += r"   v_sub_nc_u32 \dst, \src0, \src1 \dpp" + self.endLine
+        macro.addInst("v_sub_nc_u32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     elif self.AsmBugs["ExplicitCO"]:
-        kStr += r"   v_sub_u32 \dst, \src0, \src1 \dpp" + self.endLine
+        macro.addInst("v_sub_u32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     else:
-        kStr += r"   v_sub_u32 \dst, vcc, \src0, \src1 \dpp" + self.endLine
-    kStr += ".endm" + self.endLine
+        macro.addInst("v_sub_u32", "\\dst", "vcc", "\\src0", "\\src1", "\\dpp", "")
+    module.addCode(macro)
 
-    kStr += self.endLine
     # sub w/o carry-out.  On older arch, vcc is still written.
-    kStr += ".macro _v_sub_i32 dst:req, src0:req, src1:req, dpp=" + self.endLine
+    macro = Code.Macro("_v_sub_i32", "dst:req", "src0:req", "src1:req", "dpp=")
     if self.AsmBugs["ExplicitNC"]:
-        kStr += r"   v_sub_nc_i32 \dst, \src0, \src1 \dpp" + self.endLine
+         macro.addInst("v_sub_nc_i32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     elif self.AsmBugs["ExplicitCO"]:
-        kStr += r"   v_sub_i32 \dst, \src0, \src1 \dpp" + self.endLine
+         macro.addInst("v_sub_i32", "\\dst", "\\src0", "\\src1", "\\dpp", "")
     else:
-        kStr += r"   v_sub_i32 \dst, vcc, \src0, \src1 \dpp" + self.endLine
-    kStr += ".endm" + self.endLine
+         macro.addInst("v_sub_i32", "\\dst", "vcc", "\\src0", "\\src1", "\\dpp", "")
+    module.addCode(macro)
 
     # Use combined add+shift, where available:
-    kStr += self.endLine
-    kStr += ".macro _v_add_lshl_u32 dst:req, src0:req, src1:req, shiftCnt:req" + self.endLine
+    macro = Code.Macro("_v_add_lshl_u32", "dst:req", "src0:req", "src1:req", "shiftCnt:req")
     if globalParameters["AsmCaps"][self.version]["HasAddLshl"]:
-      kStr += r"    v_add_lshl_u32 \dst, \src0, \src1, \shiftCnt" + self.endLine
+       macro.addInst("v_add_lshl_u32", "\\dst", "\\src0", "\\src1", "\\shiftCnt", "")
     else:
       if self.AsmBugs["ExplicitCO"]:
-        kStr += r"    v_add_co_u32 \dst, vcc, \src0, \src1" + self.endLine
+         macro.addInst("v_add_co_u32", "\\dst", "vcc", "\\src0", "\\src1", "")
       else:
-        kStr += r"    v_add_u32 \dst, vcc, \src0, \src1" + self.endLine
-      kStr += r"    v_lshlrev_b32 \dst, \shiftCnt, \dst" + self.endLine
-    kStr += ".endm" + self.endLine
+         macro.addInst("v_add_u32", "\\dst", "vcc", "\\src0", "\\src1", "")
+      macro.addInst("v_lshlrev_b32", "\\dst", "\\shiftCnt", "\\dst", "")
+    module.addCode(macro)
 
     # Use combined shift+add, where available:
-    kStr += self.endLine
-    kStr += ".macro _v_lshl_add_u32 dst:req, src0:req, src1:req, shiftCnt:req" + self.endLine
+    macro = Code.Macro("_v_lshl_add_u32", "dst:req", "src0:req", "src1:req", "shiftCnt:req")
     if globalParameters["AsmCaps"][self.version]["HasAddLshl"]:
-      kStr += r"    v_lshl_add_u32 \dst, \src0, \src1, \shiftCnt" + self.endLine
+      macro.addInst("v_lshl_add_u32", "\\dst", "\\src0", "\\src1", "\\shiftCnt", "")
     else:
-      kStr += r"    v_lshlrev_b32 \dst, \shiftCnt, \dst" + self.endLine
+      macro.addInst("v_lshlrev_b32", "\\dst", "\\shiftCnt", "\\dst", "")
       if self.AsmBugs["ExplicitCO"]:
-        kStr += r"    v_add_co_u32 \dst, vcc, \src0, \src1" + self.endLine
+        macro.addInst("v_add_co_u32", "\\dst", "vcc", "\\src0", "\\src1", "")
       else:
-        kStr += r"    v_add_u32 \dst, vcc, \src0, \src1" + self.endLine
-    kStr += ".endm" + self.endLine
+        macro.addInst("v_add_u32", "\\dst", "vcc", "\\src0", "\\src1", "")
+    module.addCode(macro)
 
     # Use combined shift+or, where available:
-    kStr += self.endLine
-    kStr += ".macro _v_lshl_or_b32 dst:req, src0:req, shiftCnt:req, src1:req" + self.endLine
+    macro = Code.Macro("_v_lshl_or_b32", "dst:req", "src0:req", "shiftCnt:req", "src1:req")
     if globalParameters["AsmCaps"][self.version]["HasLshlOr"]:
-      kStr += r"    v_lshl_or_b32 \dst, \src0, \shiftCnt, \src1" + self.endLine
+      macro.addInst("v_lshl_or_b32", "\\dst", "\\src0", "\\shiftCnt", "\\src1", "")
     else:
-      kStr += r"    v_lshlrev_b32 \dst, \shiftCnt, \src0" + self.endLine
-      kStr += r"    v_or_b32 \dst, \dst, \src1" + self.endLine
-    kStr += ".endm" + self.endLine
+      macro.addInst("v_lshlrev_b32", "\\dst", "\\shiftCnt", "\\src0", "")
+      macro.addInst("v_or_b32", "\\dst", "\\dst", "\\src1", "")
+    module.addCode(macro)
 
     # v_dot2acc & v_dot4_acc
     inst = 'v_dot2c_f32_f16' if (self.version[0] < 11) else 'v_dot2acc_f32_f16'
-    kStr += self.endLine
-    kStr += ".macro _v_dot2acc_f32_f16 dst, src0, src1"  + self.endLine
-    kStr += f'{inst} \\dst, \\src0, \\src1' + self.endLine
-    kStr += ".endm" + self.endLine
+    macro = Code.Macro("_v_dot2acc_f32_f16", "dst", "src0", "src1")
+    macro.addInst(inst, "\\dst", "\\src0", "\\src1", "")
+    module.addCode(macro)
 
-    return kStr
+    return module
 
 
   def defineCMPXMacros(self):
@@ -1739,90 +1729,82 @@ class KernelWriterAssembly(KernelWriter):
     """
     def macro(op, dtype):
       dict = {'op': op, 'dtype': dtype}
-      mStr = ".macro _v_cmpx_{op}_{dtype} dst, src0, src1=".format(**dict) + self.endLine
+      macro = Code.Macro("_v_cmpx_{op}_{dtype}".format(**dict), "dst", "src0", "src1=")
       if self.archCaps["CMPXWritesSGPR"]:
-        mStr += r"   v_cmpx_{op}_{dtype} \dst, \src0, \src1 ".format(**dict) + self.endLine
+        macro.addInst("v_cmpx_{op}_{dtype}".format(**dict), "\\dst", "\\src0", "\\src1", "")
       else:
-        mStr += r"   v_cmp_{op}_{dtype} \dst, \src0, \src1".format(**dict) + self.endLine
+        macro.addInst("v_cmp_{op}_{dtype}".format(**dict), "\\dst", "\\src0", "\\src1", "")
         if self.kernel["WavefrontSize"] == 64:
-          mStr += r"   s_mov_b64 exec \dst" + self.endLine
+          macro.addInst("s_mov_b64", "exec", "\\dst", "")
         else:
-          mStr += r"   s_mov_b32 exec_lo \dst" + self.endLine
-      mStr += ".endm" + self.endLine
-      return mStr
+          macro.addInst("s_mov_b32", "exec_lo", "\\dst", "")
+      return macro
 
     ops = ['lt', 'eq', 'le', 'gt', 'ne', 'lg', 'ge', 'o', 'u']
     dtypes = list([sg + ln for sg in ['i','u'] for ln in ['16', '32', '64']])
 
-    return self.endLine + self.endLine.join([macro(op, dtype) for op in ops for dtype in dtypes])
+    module = Code.Module("CMPX macros")
+    for op in ops:
+      for dtype in dtypes:
+        module.addCode(macro(op, dtype))
+    return module
 
 
   def defineMACInstructionMacros(self):
-    kStr = ""
+    macro = Code.Macro("_v_mac_f32", "c:req", "a:req", "b:req")
 
-    kStr += ".macro _v_mac_f32 c:req, a:req, b:req" + self.endLine
     if self.kernel["MACInstruction"] == "FMA":
       if self.asmCaps["v_fmac_f32"]:
-        kStr += r"    v_fmac_f32 \c, \a, \b" + self.endLine
+        macro.addInst("v_fmac_f32", "\\c", "\\a", "\\b", "")
       elif self.asmCaps["v_fma_f32"]:
-        kStr += r"    v_fma_f32 \c, \a, \b, \c" + self.endLine
+        macro.addInst("v_fmac_f32", "\\c", "\\a", "\\b", "\\c", "")
       else:
         raise RuntimeError("FMA instruction specified but not supported on {}".format(self.kernel["ISA"]))
     elif self.asmCaps["v_mac_f32"]:
-      kStr += r"    v_mac_f32 \c, \a, \b" + self.endLine
+      macro.addInst("v_mac_f32", "\\c", "\\a", "\\b", "")
     else:
       raise RuntimeError("MAC instruction specified but not supported on {}".format(self.kernel["ISA"]))
-    kStr += ".endmacro" + self.endLine
 
-    return kStr
+    return macro
 
 
   def generalMacro(self, prefix, origin, replace, *args):
-    kStr = ''
-    kStr += f'.macro _{prefix}{origin}'
-    for arg in args:
-      kStr += f' {arg}'
-    kStr += self.endLine
-
-    kStr += f'    {prefix}{replace}'
-    for arg in args:
-      kStr += f' \\{arg}'
-    kStr += self.endLine
-
-    kStr += '.endm' + self.endLine
-    return kStr
+    macro = Code.Macro("_%s%s" % (prefix, origin), *args)
+    inst_args = list(["\\%s"%arg for arg in args])
+    macro.addInst("%s%s" % (prefix, replace), *inst_args, "")
+    return macro
 
 
   def defineSLoadMacros(self):
-
+    module = Code.Module("S load macros")
     macro_list = {'b32' :'dword',
                   'b64' :'dwordx2',
                   'b128':'dwordx4',
                   'b256':'dwordx8',
                   'b512':'dwordx16'}
-    kStr = self.comment('scale global load macros')
+    module.addComment1('scale global load macros')
     for key in macro_list:
         origin = key
         replace = macro_list[key] if (self.version[0] < 11) else key
-        kStr += self.generalMacro("s_load_", origin, replace, 'dst', 'base', 'offset') + self.endLine
-    return kStr
+        module.addCode(self.generalMacro("s_load_", origin, replace, 'dst', 'base', 'offset'))
+    return module
 
 
   def defineDSMacros(self):
-
-    kStr = self.comment('ds operation macros')
+    module = Code.Module("DS macros")
+    module.addComment1('ds operation macros')
 
     width = ('u8', 'u8_d16_hi', 'u16', 'u16_d16_hi', 'b32', 'b64', 'b128')
     for w in width:
       origin = f'load_{w}'
       replace = f'read_{w}' if (self.version[0] < 11) else f'load_{w}'
-      kStr += self.generalMacro('ds_', origin, replace, 'dst', 'src', 'offset') + self.endLine
+      module.addCode(self.generalMacro('ds_', origin, replace, 'dst', 'src', 'offset'))
 
     width = ('b8', 'b8_d16_hi', 'b16', 'b16_d16_hi', 'b32', 'b64', 'b128')
     for w in width:
       origin = f'store_{w}'
       replace = f'write_{w}' if (self.version[0] < 11) else f'store_{w}'
-      kStr += self.generalMacro('ds_', origin, replace, 'dst', 'src', 'offset') + self.endLine
+      module.addCode(self.generalMacro('ds_', origin, replace, 'dst', 'src', 'offset'))
 
     width = ('b32', 'b64')
     op = {'load2' : 'read2',
@@ -1831,13 +1813,14 @@ class KernelWriterAssembly(KernelWriter):
       for w in width:
         origin = f'{key}_{w}'
         replace = f'{op[key]}_{w}' if (self.version[0] < 11) else f'{key}_{w}'
-        kStr += self.generalMacro('ds_', origin, replace, 'dst', 'src', 'offset1', 'offset2') + self.endLine
+        module.addCode(self.generalMacro('ds_', origin, replace, 'dst', 'src', 'offset1', 'offset2'))
 
-    return kStr
+    return module
 
 
   def defineBufferMemoryMacros(self):
-    kStr = self.comment('buffer memory operation macros')
+    module = Code.Module("Buffer memory operation macros")
+    module.addComment1('buffer memory operation macros')
 
     type_list = {
       'b32'       : 'dword',
@@ -1853,7 +1836,7 @@ class KernelWriterAssembly(KernelWriter):
     for t in type_list:
       origin  = f'{t}'
       replace = f'{type_list[t]}' if (self.version[0] < 11) else f'{t}'
-      kStr += self.generalMacro('buffer_load_', origin, replace, 'dst', 'voffset', 'base', 'soffset', 'offen', 'ioffset', 'md0', 'md1', 'md2') + self.endLine
+      module.addCode(self.generalMacro('buffer_load_', origin, replace, 'dst', 'voffset', 'base', 'soffset', 'offen', 'ioffset', 'md0', 'md1', 'md2'))
 
     type_list = {
       'b32'       : 'dword',
@@ -1868,20 +1851,21 @@ class KernelWriterAssembly(KernelWriter):
     for t in type_list:
       origin  = f'{t}'
       replace = f'{type_list[t]}' if (self.version[0] < 11) else f'{t}'
-      kStr += self.generalMacro('buffer_store_', origin, replace, 'src', 'voffset', 'base', 'soffset', 'offen', 'ioffset', 'md0', 'md1', 'md2') + self.endLine
+      module.addCode(self.generalMacro('buffer_store_', origin, replace, 'src', 'voffset', 'base', 'soffset', 'offen', 'ioffset', 'md0', 'md1', 'md2'))
 
     type_list = {'_b32': '',
                  '_b64': '_x2'}
     for t in type_list:
         origin  = f'{t}'
         replace = f'{type_list[t]}' if (self.version[0] < 11) else f'{t}'
-        kStr += self.generalMacro('buffer_atomic_cmpswap', origin, replace, 'dst', 'voffset', 'base', 'soffset', 'offen', 'ioffset', 'md0', 'md1', 'md2') + self.endLine
+        module.addCode(self.generalMacro('buffer_atomic_cmpswap', origin, replace, 'dst', 'voffset', 'base', 'soffset', 'offen', 'ioffset', 'md0', 'md1', 'md2'))
 
-    return kStr
+    return module
 
 
   def defineFlatMemoryMacros(self):
-    kStr = self.comment('buffer memory operation macros')
+    module = Code.Module("Flat memory operation macros")
+    module.addComment1('Flat memory operation macros')
 
     type_list = {
       'b32'       : 'dword',
@@ -1897,32 +1881,89 @@ class KernelWriterAssembly(KernelWriter):
     for t in type_list:
       origin  = f'{t}'
       replace = f'{type_list[t]}' if (self.version[0] < 11) else f'{t}'
-      kStr += self.generalMacro('flat_load_', origin, replace, 'dst', 'base', 'md0', 'md1', 'md2') + self.endLine
-      kStr += self.generalMacro('flat_store_', origin, replace, 'base', 'src', 'md0', 'md1', 'md2') + self.endLine
+      module.addCode(self.generalMacro('flat_load_', origin, replace, 'dst', 'base', 'md0', 'md1', 'md2'))
+      module.addCode(self.generalMacro('flat_store_', origin, replace, 'base', 'src', 'md0', 'md1', 'md2'))
 
     type_list = {'_b32': ''}
     for t in type_list:
         origin  = f'{t}'
         replace = f'{type_list[t]}' if (self.version[0] < 11) else f'{t}'
-        kStr += self.generalMacro('flat_atomic_cmpswap', origin, replace, 'tmp', 'base', 'data', 'md') + self.endLine
+        module.addCode(self.generalMacro('flat_atomic_cmpswap', origin, replace, 'tmp', 'base', 'data', 'md'))
 
-    return kStr
+    return module
 
 
   def defineFeatureMacros(self):
     """
       Defines cross-architecture compatibility macros.
     """
-    kStr = self.comment3("Asm syntax workarounds")
-    kStr += self.defineVALUMacros()
-    kStr += self.defineCMPXMacros()
-    kStr += self.defineMACInstructionMacros()
-    kStr += self.defineSLoadMacros()
-    kStr += self.defineDSMacros()
-    kStr += self.defineBufferMemoryMacros()
-    kStr += self.defineFlatMemoryMacros()
+    module = Code.Module("Feature macros")
+    module.addComment2("Asm syntax workarounds")
+    module.addCode(self.defineVALUMacros())
+    module.addCode(self.defineCMPXMacros())
+    module.addCode(self.defineMACInstructionMacros())
+    module.addCode(self.defineSLoadMacros())
+    module.addCode(self.defineDSMacros())
+    module.addCode(self.defineBufferMemoryMacros())
+    module.addCode(self.defineFlatMemoryMacros())
 
-    return kStr
+    return module
+
+  # Performs a division using 'magic number' computed on host
+  # Argument requirements:
+  #   - dstIdx must be two consecutive registers ; on exit the lower one will contain the quotient.  The upper is used as a temp.
+  #   - First parm is passed as an integer vgpr index ; remaining are vgpr or sgpr symbolic names
+  #   - dstIdx+1 cannot be same as dividend.  dividend+0 can be same as dividend and this may be useful for chaining divides.
+  def defineMagicDivMacros(self, magicDivAlg):
+    module = Code.Module("defineMagicDivMacros")
+    module.addComment1("Magic div and mod functions")
+    macro = Code.Macro("V_MAGIC_DIV", "dstIdx:req", "dividend:req", "magicNumber:req", "magicShift:req", "magicA:req")
+    if magicDivAlg==1: # TODO: remove me
+        macro.addInst("v_mul_hi_u32", "v[\\dstIdx+1]", "\\dividend", "\\magicNumber", "")
+        macro.addInst("v_mul_lo_u32", "v[\\dstIdx+0]", "\\dividend", "\\magicNumber", "")
+        macro.addInst("v_lshrrev_b64", "v[\\dstIdx:\\dstIdx+1]", "\\magicShift", "v[\\dstIdx:\\dstIdx+1]", "")
+    elif magicDivAlg==2:
+        macro.addInst("v_mul_hi_u32", "v[\\dstIdx+1]", "\\dividend", "\\magicNumber", "")
+        macro.addInst("v_mul_lo_u32", "v[\\dstIdx+0]", "\\dividend", "\\magicA", "")
+        macro.addInst("_v_add_u32", "v[\\dstIdx+0]", "v[\\dstIdx+0]", "v[\\dstIdx+1]", "")
+        macro.addInst("v_lshrrev_b32", "v[\\dstIdx+0]", "\\magicShift", "v[\\dstIdx+0]", "")
+    module.addCode(macro)
+    return module
+
+  def defineDynamicScalarDivMacros(self):
+    module = Code.Module("Dynamic scalar divide macros")
+    module.addComment1("Dynamic Scalar Divide: vQuotient=vDividend/vDivisor; vRemainder=vDividend%vDivisor;")
+    macro = Code.Macro("DYNAMIC_VECTOR_DIVIDE", "vQuotient", "vRemainder", "vDividend", "vDivisor", "vTmp0", "vTmp1", "sTmp")
+    sTmpStr = "s[\\sTmp]" if (self.kernel["WavefrontSize"] == 32) else "s[\\sTmp:\\sTmp+1]"
+    macro.addInst("v_cvt_f32_u32", "v[\\vQuotient]",  "v[\\vDivisor]",  "" )
+    macro.addInst("v_rcp_f32",     "v[\\vQuotient]",  "v[\\vQuotient]", "" )
+    macro.addInst("v_mul_f32",     "v[\\vQuotient]",  "0x4f800000",     "v[\\vQuotient]", "" )
+    macro.addInst("v_cvt_u32_f32", "v[\\vQuotient]",  "v[\\vQuotient]", "" )
+    macro.addInst("v_mul_lo_u32",  "v[\\vRemainder]", "v[\\vDivisor]", "v[\\vQuotient]", "" )
+    macro.addInst("v_mul_hi_u32",  "v[\\vTmp0]",      "v[\\vDivisor]", "v[\\vQuotient]", "" )
+    macro.addInst("_v_sub_co_u32",     "v[\\vTmp1]",      self.vcc, hex(0),    "v[\\vRemainder]", "" )
+    macro.addInst("v_cmp_ne_i32",  sTmpStr, hex(0),        "v[\\vTmp0]", "" )
+    macro.addInst("v_cndmask_b32", "v[\\vRemainder]", "v[\\vTmp1]",     "v[\\vRemainder]", sTmpStr, "" )
+    macro.addInst("v_mul_hi_u32",  "v[\\vRemainder]", "v[\\vRemainder]", "v[\\vQuotient]", "" )
+    macro.addInst("_v_sub_co_u32",     "v[\\vTmp0]",      self.vcc,            "v[\\vQuotient]", "v[\\vRemainder]", "" )
+    macro.addInst("_v_add_co_u32",     "v[\\vQuotient]",  self.vcc,            "v[\\vQuotient]", "v[\\vRemainder]", "" )
+    macro.addInst("v_cndmask_b32", "v[\\vQuotient]",  "v[\\vQuotient]", "v[\\vTmp0]", sTmpStr, "" )
+    macro.addInst("v_mul_hi_u32",  "v[\\vQuotient]",  "v[\\vQuotient]", "v[\\vDividend]", "" )
+    macro.addInst("v_mul_lo_u32",  "v[\\vRemainder]", "v[\\vQuotient]", "v[\\vDivisor]", "" )
+    macro.addInst("_v_sub_co_u32",     "v[\\vTmp0]",      self.vcc,            "v[\\vDividend]", "v[\\vRemainder]", "" )
+    macro.addInst("v_cmp_ge_u32",  sTmpStr, "v[\\vDividend]", "v[\\vRemainder]", "" )
+    macro.addInst("_v_add_co_u32",     "v[\\vRemainder]", self.vcc,            hex(1), "v[\\vQuotient]", "" )
+    macro.addInst("_v_add_co_u32",     "v[\\vTmp1]",      self.vcc, -1,        "v[\\vQuotient]", "" )
+    macro.addInst("v_cmp_le_u32",  self.vcc,             "v[\\vDivisor]", "v[\\vTmp0]", "" )
+    macro.addInst("s_and_b{}".format(self.kernel["WavefrontSize"]),     self.vcc,             sTmpStr,         self.vcc,     "" )
+    macro.addInst("v_cndmask_b32", "v[\\vQuotient]",  "v[\\vQuotient]", "v[\\vRemainder]", self.vcc, "" )
+    macro.addInst("v_cndmask_b32", "v[\\vQuotient]",  "v[\\vTmp1]",     "v[\\vQuotient]", sTmpStr, "" )
+    macro.addInst("v_cmp_ne_i32",  self.vcc, hex(0),     "v[\\vDivisor]", "" )
+    macro.addInst("v_cndmask_b32", "v[\\vQuotient]",  -1, "v[\\vQuotient]", self.vcc, "final result" )
+    macro.addInst("v_mul_lo_u32",  "v[\\vRemainder]", "v[\\vQuotient]", "v[\\vDivisor]", "" )
+    macro.addInst("_v_sub_co_u32",     "v[\\vRemainder]", self.vcc,            "v[\\vDividend]", "v[\\vRemainder]", "final result" )
+    module.addCode(macro)
+    return module
 
 
   ##############################################################################
@@ -1936,27 +1977,8 @@ class KernelWriterAssembly(KernelWriter):
     signature = Component.Signature.find(self)
     kStr += signature(self)
 
-    kStr += self.defineFeatureMacros()
-
-    # Performs a division using 'magic number' computed on host
-    # Argument requirements:
-    #   - dstIdx must be two consecutive registers ; on exit the lower one will contain the quotient.  The upper is used as a temp.
-    #   - First parm is passed as an integer vgpr index ; remaining are vgpr or sgpr symbolic names
-    #   - dstIdx+1 cannot be same as dividend.  dividend+0 can be same as dividend and this may be useful for chaining divides.
-    kStr += self.comment3("Magic div and mod functions")
-    if kernel["MagicDivAlg"]==1: # TODO: remove me
-        kStr += ".macro V_MAGIC_DIV dstIdx:req, dividend:req, magicNumber:req, magicShift:req, magicA:req" + self.endLine
-        kStr += r"    v_mul_hi_u32 v[\dstIdx+1], \dividend, \magicNumber" + self.endLine
-        kStr += r"    v_mul_lo_u32 v[\dstIdx+0], \dividend, \magicNumber" + self.endLine
-        kStr += r"    v_lshrrev_b64 v[\dstIdx:\dstIdx+1], \magicShift, v[\dstIdx:\dstIdx+1]" + self.endLine
-        kStr += ".endm" + self.endLine
-    elif kernel["MagicDivAlg"]==2:
-        kStr += ".macro V_MAGIC_DIV dstIdx:req, dividend:req, magicNumber:req, magicShift:req, magicA:req" + self.endLine
-        kStr += r"    v_mul_hi_u32 v[\dstIdx+1], \dividend, \magicNumber" + self.endLine
-        kStr += r"    v_mul_lo_u32 v[\dstIdx+0], \dividend, \magicA" + self.endLine
-        kStr += r"    _v_add_u32 v[\dstIdx+0], v[\dstIdx+0], v[\dstIdx+1]" + self.endLine
-        kStr += r"    v_lshrrev_b32 v[\dstIdx+0], \magicShift, v[\dstIdx+0]" + self.endLine
-        kStr += ".endm" + self.endLine
+    kStr += str(self.defineFeatureMacros())
+    kStr += str(self.defineMagicDivMacros(kernel["MagicDivAlg"]))
 
     ########################################
     # VGPR Macros
@@ -2143,6 +2165,7 @@ class KernelWriterAssembly(KernelWriter):
     # justOffset32 means we should only write the 32-bit offset
     # This is used in Buffer addressing modes.
     # Flat addressing modes expect the GLOBAL_OFFSET to initialize a full 64-bit address
+    module = Code.Module("Global offset macros")
     for (tc, indices, justOffset32, tP) in [ \
         ("C", list(range(0, kernel["ProblemType"]["NumIndicesC"])), kernel["BufferStore"], None), \
         ("A", kernel["ProblemType"]["IndexAssignmentsA"], kernel["BufferLoad"], self.tPA), \
@@ -2152,7 +2175,7 @@ class KernelWriterAssembly(KernelWriter):
       if tc == "C" and kernel["BufferStore"]:
         continue
 
-      kStr += self.comment("Global Offset %s"%tc)
+      module.addComment1("Global Offset %s"%tc)
       numDim = len(indices)
       idxChars = []
       for i in indices:
@@ -2161,9 +2184,9 @@ class KernelWriterAssembly(KernelWriter):
       packBatchDims = tP["PackBatchDims"] if tP != None else 0x3
 
       # macro declaration
-      kStr += ".macro GLOBAL_OFFSET_%s vgprAddr:req"%tc
       calcDims = [] # dimensions which are participating in the address calc (ignores other summation)
       mirrorSumDims = []
+      macroArgs = []
       for i in range(0, numDim):
         if tc == 'C':
           useInitialStrides = kernel["ProblemType"]["UseInitialStridesCD"]
@@ -2177,7 +2200,7 @@ class KernelWriterAssembly(KernelWriter):
         if     tc in ('A','C') and indices[i] == kernel["ProblemType"]["Index0"] \
             or tc in ('B','C') and indices[i] == kernel["ProblemType"]["Index1"] \
             or indices[i] == kernel["ProblemType"]["IndexUnroll"]:
-          kStr += " vgprOffset%s:req" % idxChars[i]
+          macroArgs.append("vgprOffset%s:req" % idxChars[i])
           calcDims.append(i)
         elif indices[i] in kernel["ProblemType"]["IndicesSummation"]:
           # other summation index (not unroll)
@@ -2188,11 +2211,11 @@ class KernelWriterAssembly(KernelWriter):
           # other batch or free index
           if isPackedIndex(kernel, indices[i], packBatchDims):
             calcDims.append(i)
-            kStr += " vgprOffset%s:req" % idxChars[i]
+            macroArgs.append("vgprOffset%s:req" % idxChars[i])
           elif not justOffset32: # buffer/justOffset32 scalars are included in SRD not the offset, so skip here
             calcDims.append(i)
-            kStr += " sgprOffset%s:req" % idxChars[i]
-      kStr += " vgprTmp:req" + self.endLine
+            macroArgs.append("sgprOffset%s:req" % idxChars[i])
+      macro = Code.Macro("GLOBAL_OFFSET_%s" % tc, "vgprAddr:req", *macroArgs, "vgprTmp:req")
 
       # Each index may be skipped, scaled by stride, or unscaled
       # If destLo is unset, no accumulation is necessary.
@@ -2218,12 +2241,12 @@ class KernelWriterAssembly(KernelWriter):
         else:
           dest = "v[\\vgprTmp+0]"
           needAdd = 1
-        kStr += inst("_v_sub_u32", \
+        macro.addInst("_v_sub_u32", \
                 dest,
                 sgpr("Size%s"%globalParameters["IndexChars"][indices[i]]), \
                 "1", \
                 "mirror %s%s 1"%(tc, globalParameters["IndexChars"][indices[i]]))
-        kStr += inst("v_mul_lo_u32", \
+        macro.addInst("v_mul_lo_u32", \
                 dest,
                 dest, \
                 self.strideRef(tc, indices[i]), \
@@ -2236,7 +2259,7 @@ class KernelWriterAssembly(KernelWriter):
 
           srcLo = pendingOffset if pendingOffset else destLo
           srcHi = 0 if pendingOffset else destHi
-          kStr += inst("_v_add_co_u32", \
+          macro.addInst("_v_add_co_u32", \
             destLo, \
             self.vcc, \
             srcLo, \
@@ -2268,7 +2291,7 @@ class KernelWriterAssembly(KernelWriter):
         else:
           offset = "s[\\sgprOffset%s]" % idxChars[i]
 
-        #kStr += self.comment1("dim%s pendingOffset=%s offset=%s offsetIsVgpr=%s" \
+        # macro.addComment0("dim%s pendingOffset=%s offset=%s offsetIsVgpr=%s" \
         #    % (self.indexChars[indices[i]], pendingOffset, offset, offsetIsVgpr))
 
         needAdd = 0
@@ -2290,12 +2313,12 @@ class KernelWriterAssembly(KernelWriter):
               destHi = "v[\\vgprTmp+1]"
               needAdd = 1
             if isMirrorIdx:
-              kStr += inst("_v_sub_i32", \
+              macro.addInst("_v_sub_i32", \
                 "v[\\vgprTmp+0]",
                 sgpr("Size%s"%globalParameters["IndexChars"][idx]), \
                 offset, \
                 "mirror %s%s 1"%(tc, globalParameters["IndexChars"][indices[i]]))
-              kStr += inst("_v_sub_i32", \
+              macro.addInst("_v_sub_i32", \
                 "v[\\vgprTmp+0]",
                 "v[\\vgprTmp+0]", \
                 "1", \
@@ -2303,13 +2326,13 @@ class KernelWriterAssembly(KernelWriter):
               offset = "v[\\vgprTmp+0]"
 
             # offset * stride
-            kStr += inst("v_mul_lo_u32", \
+            macro.addInst("v_mul_lo_u32", \
                 destLo,
                 self.strideRef(tc, indices[i]), \
                 offset, \
                 "mul d%u lower"%i)
             if not justOffset32:
-              kStr += inst("v_mul_hi_u32", \
+              macro.addInst("v_mul_hi_u32", \
                   destHi,
                   self.strideRef(tc, indices[i]), \
                   offset, \
@@ -2318,17 +2341,17 @@ class KernelWriterAssembly(KernelWriter):
             assert not isMirrorIdx
             if not justOffset32:
               # buffer mode (aka justOffset32) does scalars into SRD not offset
-              kStr += inst("v_mov_b32", \
+              macro.addInst("v_mov_b32", \
                   "v[\\vgprTmp+2]", \
                   "s[\\sgprOffset%s]"%idxChars[i], \
                   "sgprOffset -> vgprTmp+2")
               # offset * stride
-              kStr += inst("v_mul_lo_u32", \
+              macro.addInst("v_mul_lo_u32", \
                   "v[\\vgprTmp+0]", \
                   self.strideRef(tc, indices[i]), \
                   "v[\\vgprTmp+2]",  \
                   "other stride mul d%u lower"%i)
-              kStr += inst("v_mul_hi_u32", \
+              macro.addInst("v_mul_hi_u32", \
                   "v[\\vgprTmp+1]", \
                   self.strideRef(tc, indices[i]), \
                   "v[\\vgprTmp+2]",  \
@@ -2343,7 +2366,7 @@ class KernelWriterAssembly(KernelWriter):
 
           srcLo = pendingOffset if pendingOffset else destLo
           srcHi = 0 if pendingOffset else destHi
-          kStr += inst("_v_add_co_u32", \
+          macro.addInst("_v_add_co_u32", \
             destLo, \
             self.vcc, \
             srcLo, \
@@ -2352,7 +2375,7 @@ class KernelWriterAssembly(KernelWriter):
 
           # addr += offset * stride (hi)
           if not justOffset32:
-            kStr += inst("_v_addc_co_u32", \
+            macro.addInst("_v_addc_co_u32", \
                 "v[\\vgprAddr+1]", \
                 self.vcc, \
                 "v[\\vgprTmp+1]",  \
@@ -2367,11 +2390,11 @@ class KernelWriterAssembly(KernelWriter):
       if pendingOffset != None:
         destLo = "v[\\vgprAddr+0]"
         if writeDirectToAddr:
-          kStr += inst("v_mov_b32", destLo, offset, "setup d0 lower")
+          macro.addInst("v_mov_b32", destLo, offset, "setup d0 lower")
           if not justOffset32:
-            kStr += inst("v_mov_b32", "v[\\vgprAddr+1]", hex(0), "d0 upper")
+            macro.addInst("v_mov_b32", "v[\\vgprAddr+1]", hex(0), "d0 upper")
         else:
-          kStr += inst("_v_add_co_u32", \
+          macro.addInst("_v_add_co_u32", \
             destLo, \
             self.vcc, \
             destLo, \
@@ -2380,7 +2403,7 @@ class KernelWriterAssembly(KernelWriter):
 
 
       if tP != None and kernel["BufferLoad"] and self.srdShiftLeft[tc]:
-        kStr += inst("_v_add_u32", \
+        macro.addInst("_v_add_u32", \
             "v[\\vgprAddr+0]", \
             hex(self.srdShiftLeft[tc]), \
             "v[\\vgprAddr+0]", \
@@ -2388,49 +2411,18 @@ class KernelWriterAssembly(KernelWriter):
 
       # addr *= bytes/element
       if justOffset32:
-        kStr += str(staticMultiply("v[\\vgprAddr+0]", "v[\\vgprAddr+0]", self.bpeAB, None, "offset *= bytes/element"))
+        macro.addCode(staticMultiply("v[\\vgprAddr+0]", "v[\\vgprAddr+0]", self.bpeAB, None, "offset *= bytes/element"))
       else:
-        kStr += inst("v_lshlrev_b64", \
+        macro.addInst("v_lshlrev_b64", \
             "v[\\vgprAddr+0:\\vgprAddr+1]", \
             hex(log2(self.bpeAB)), \
             "v[\\vgprAddr+0:\\vgprAddr+1]", \
             "offset *= bytes/element")
-      #kStr += "s_endpgm\n"
-      kStr += ".endm%s" % self.endLine
+      module.addCode(macro)
 
-    ########################################
-    # Dynamic Scalar Divide
-    kStr += self.comment3("Dynamic Scalar Divide: vQuotient=vDividend/vDivisor; vRemainder=vDividend%vDivisor;")
-    kStr += ".macro DYNAMIC_VECTOR_DIVIDE vQuotient vRemainder vDividend vDivisor vTmp0 vTmp1 sTmp%s" % self.endLine
-    sTmpStr = "s[\\sTmp]" if (self.kernel["WavefrontSize"] == 32) else "s[\\sTmp:\\sTmp+1]"
-    kStr += inst("v_cvt_f32_u32", "v[\\vQuotient]",  "v[\\vDivisor]",  "" )
-    kStr += inst("v_rcp_f32",     "v[\\vQuotient]",  "v[\\vQuotient]", "" )
-    kStr += inst("v_mul_f32",     "v[\\vQuotient]",  "0x4f800000",     "v[\\vQuotient]", "" )
-    kStr += inst("v_cvt_u32_f32", "v[\\vQuotient]",  "v[\\vQuotient]", "" )
-    kStr += inst("v_mul_lo_u32",  "v[\\vRemainder]", "v[\\vDivisor]", "v[\\vQuotient]", "" )
-    kStr += inst("v_mul_hi_u32",  "v[\\vTmp0]",      "v[\\vDivisor]", "v[\\vQuotient]", "" )
-    kStr += inst("_v_sub_co_u32",     "v[\\vTmp1]",      self.vcc, hex(0),    "v[\\vRemainder]", "" )
-    kStr += inst("v_cmp_ne_i32",  sTmpStr, hex(0),        "v[\\vTmp0]", "" )
-    kStr += inst("v_cndmask_b32", "v[\\vRemainder]", "v[\\vTmp1]",     "v[\\vRemainder]", sTmpStr, "" )
-    kStr += inst("v_mul_hi_u32",  "v[\\vRemainder]", "v[\\vRemainder]", "v[\\vQuotient]", "" )
-    kStr += inst("_v_sub_co_u32",     "v[\\vTmp0]",      self.vcc,            "v[\\vQuotient]", "v[\\vRemainder]", "" )
-    kStr += inst("_v_add_co_u32",     "v[\\vQuotient]",  self.vcc,            "v[\\vQuotient]", "v[\\vRemainder]", "" )
-    kStr += inst("v_cndmask_b32", "v[\\vQuotient]",  "v[\\vQuotient]", "v[\\vTmp0]", sTmpStr, "" )
-    kStr += inst("v_mul_hi_u32",  "v[\\vQuotient]",  "v[\\vQuotient]", "v[\\vDividend]", "" )
-    kStr += inst("v_mul_lo_u32",  "v[\\vRemainder]", "v[\\vQuotient]", "v[\\vDivisor]", "" )
-    kStr += inst("_v_sub_co_u32",     "v[\\vTmp0]",      self.vcc,            "v[\\vDividend]", "v[\\vRemainder]", "" )
-    kStr += inst("v_cmp_ge_u32",  sTmpStr, "v[\\vDividend]", "v[\\vRemainder]", "" )
-    kStr += inst("_v_add_co_u32",     "v[\\vRemainder]", self.vcc,            hex(1), "v[\\vQuotient]", "" )
-    kStr += inst("_v_add_co_u32",     "v[\\vTmp1]",      self.vcc, -1,        "v[\\vQuotient]", "" )
-    kStr += inst("v_cmp_le_u32",  self.vcc,             "v[\\vDivisor]", "v[\\vTmp0]", "" )
-    kStr += inst("s_and_b{}".format(self.kernel["WavefrontSize"]),     self.vcc,             sTmpStr,         self.vcc,     "" )
-    kStr += inst("v_cndmask_b32", "v[\\vQuotient]",  "v[\\vQuotient]", "v[\\vRemainder]", self.vcc, "" )
-    kStr += inst("v_cndmask_b32", "v[\\vQuotient]",  "v[\\vTmp1]",     "v[\\vQuotient]", sTmpStr, "" )
-    kStr += inst("v_cmp_ne_i32",  self.vcc, hex(0),     "v[\\vDivisor]", "" )
-    kStr += inst("v_cndmask_b32", "v[\\vQuotient]",  -1, "v[\\vQuotient]", self.vcc, "final result" )
-    kStr += inst("v_mul_lo_u32",  "v[\\vRemainder]", "v[\\vQuotient]", "v[\\vDivisor]", "" )
-    kStr += inst("_v_sub_co_u32",     "v[\\vRemainder]", self.vcc,            "v[\\vDividend]", "v[\\vRemainder]", "final result" )
-    kStr += ".endm%s" % self.endLine
+
+    kStr += str(module)
+    kStr += str(self.defineDynamicScalarDivMacros())
 
     if self.overflowedResources:
       if self.overflowedResources == 1:
