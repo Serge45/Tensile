@@ -26,6 +26,33 @@ import ctypes
 # Global to print module names around strings
 printModuleNames = 0
 
+def slash(comment):
+  """
+  This comment is a single line // MYCOMMENT
+  """
+  return "// %s\n"%comment
+
+def block(comment):
+  """
+  This comment is a single line /* MYCOMMENT  */
+  """
+  return "/* %s */\n"%comment
+
+def blockNewLine(comment):
+  """
+  This comment is a blank line followed by /* MYCOMMENT  */
+  """
+  return "\n/* %s */\n"%comment
+
+def block3Line(comment):
+  kStr = "\n/******************************************/\n"
+  for line in comment.split("\n"):
+    kStr += "/*"
+    kStr += " %-38s " % line
+    kStr += "*/\n"
+  kStr += "/******************************************/\n"
+  return kStr
+
 def printItemList(listOfItems, tag="__unnamed__"):
   header = "="*40
   print("%s\nbegin list %s\n%s"%(header, tag, header))
@@ -56,6 +83,201 @@ class Item:
     ostream = ""
     ostream += "%s%s "%(indent, type(self).__name__)
     ostream += str(self)
+    return ostream
+
+class SignatureArgument(Item):
+  def __init__(self, name, size, valueKind, valueType, isAddrSpaceQual = None):
+    self.name      = name
+    self.size      = size
+    self.valueKind = valueKind
+    self.valueType = valueType
+
+    self.isAddrSpaceQual = isAddrSpaceQual
+
+class SignatureArgumentV2(SignatureArgument):
+  def __init__(self, size, align, name, valueKind, valueType, isAddrSpaceQual=None):
+    super().__init__(name, size, valueKind, valueType, isAddrSpaceQual)
+    self.align = align
+
+  def __str__(self):
+    signatureIndent = " " * 8
+    kStr = ""
+    kStr += signatureIndent[2:] + "- Name:            %s\n" % self.name
+    kStr += signatureIndent + "Size:            %s\n" % self.size
+    kStr += signatureIndent + "Align:          %s\n" % self.align
+    kStr += signatureIndent + "ValueKind:      %s\n" % self.valueKind
+    kStr += signatureIndent + "ValueType:      %s\n" % self.valueType
+    if self.isAddrSpaceQual != None:
+        kStr += signatureIndent + "AddrSpaceQual:   %s\n" % self.isAddrSpaceQual
+    return kStr
+
+class SignatureArgumentV3(SignatureArgument):
+  def __init__(self, size, offset, name, valueKind, valueType, isAddrSpaceQual=None):
+    super().__init__(name, size, valueKind, valueType, isAddrSpaceQual)
+    self.offset = offset
+
+  def __str__(self):
+    signatureIndent = " " * 8
+    kStr = ""
+    kStr += signatureIndent[2:] + "- .name:            %s\n" % self.name
+    kStr += signatureIndent + ".size:            %s\n" % self.size
+    kStr += signatureIndent + ".offset:          %s\n" % self.offset
+    kStr += signatureIndent + ".value_kind:      %s\n" % self.valueKind
+    kStr += signatureIndent + ".value_type:      %s\n" % self.valueType
+    if self.isAddrSpaceQual != None:
+        kStr += signatureIndent + ".address_space:   %s\n" % self.isAddrSpaceQual
+    return kStr
+
+class SignatureKernelDescriptorV3(Item):
+  def __init__(self, target, accumOffset, totalVgprs, totalSgprs, groupSegSize, hasWave32, waveFrontSize, reserved, sgprWg, vgprWi, name):
+    self.name  = name  # kernel name
+    self.target = target
+    self.accumOffset = accumOffset
+    self.totalVgprs = totalVgprs
+    self.totalSgprs = totalSgprs
+    self.groupSegSize = groupSegSize
+    self.hasWave32 = hasWave32
+    self.waveFrontSize = waveFrontSize
+    self.sgprWg = sgprWg
+    self.vgprWi = vgprWi
+
+  def __str__(self):
+    kdIndent = " " * 2
+    kStr = ""
+    kStr += ".amdgcn_target \"amdgcn-amd-amdhsa--%s\"\n" % self.target
+    kStr += ".text\n"
+    kStr += ".protected %s\n" % self.name
+    kStr += ".globl %s\n" % self.name
+    kStr += ".p2align 8\n"
+    kStr += ".type %s,@function\n" % self.name
+    kStr += ".section .rodata,#alloc\n"
+    kStr += ".p2align 6\n"
+    kStr += ".amdhsa_kernel %s\n" % self.name
+    kStr += kdIndent + ".amdhsa_user_sgpr_kernarg_segment_ptr 1\n"
+    if self.accumOffset != None:
+      kStr += kdIndent + ".amdhsa_accum_offset %u // accvgpr offset\n" % self.accumOffset
+    kStr += kdIndent + ".amdhsa_next_free_vgpr %u // vgprs\n" % self.totalVgprs
+    kStr += kdIndent + ".amdhsa_next_free_sgpr %u // sgprs\n" % self.totalSgprs
+    kStr += kdIndent + ".amdhsa_group_segment_fixed_size %u // lds bytes\n" % self.groupSegSize
+    if self.hasWave32:
+      if self.waveFrontSize == 32:
+        kStr += kdIndent + ".amdhsa_wavefront_size32 1 // 32-thread wavefronts\n"
+      else:
+        kStr += kdIndent + ".amdhsa_wavefront_size32 0 // 64-thread wavefronts\n"
+    kStr += kdIndent + ".amdhsa_private_segment_fixed_size 0\n"
+    kStr += kdIndent + ".amdhsa_system_sgpr_workgroup_id_x %u\n" % self.sgprWg[0]
+    kStr += kdIndent + ".amdhsa_system_sgpr_workgroup_id_y %u\n" % self.sgprWg[1]
+    kStr += kdIndent + ".amdhsa_system_sgpr_workgroup_id_z %u\n" % self.sgprWg[2]
+    kStr += kdIndent + ".amdhsa_system_vgpr_workitem_id %u\n" % self.vgprWi
+    kStr += kdIndent + ".amdhsa_float_denorm_mode_32 3\n"
+    kStr += kdIndent + ".amdhsa_float_denorm_mode_16_64 3\n"
+    kStr += ".end_amdhsa_kernel\n"
+    kStr += ".text\n"
+    return kStr
+
+  def prettyPrint(self, indent=""):
+    ostream = ""
+    ostream += "%s%s "%(indent, type(self).__name__)
+    return ostream
+
+class SignatureCodeMetaV3(Item):
+  def __init__(self, groupSegSize, totalVgprs, totalSgprs, flatWgSize, waveFrontSize, name):
+    self.name = name
+    self.groupSegSize = groupSegSize
+    self.totalVgprs = totalVgprs
+    self.totalSgprs = totalSgprs
+    self.flatWgSize = flatWgSize
+    self.waveFrontSize = waveFrontSize
+    self.offset = 0
+    self.argList = []
+
+  def __str__(self):
+    kStr = ""
+    kStr += ".amdgpu_metadata\n"
+    kStr += "---\n"
+    kStr += "amdhsa.version:\n"
+    kStr += "  - 1\n"
+    kStr += "  - 0\n"
+    kStr += "amdhsa.kernels:\n"
+    kStr += "  - .name: %s\n" % self.name
+    kStr += "    .symbol: '%s.kd'\n" % self.name
+    kStr += "    .language:                   OpenCL C\n"
+    kStr += "    .language_version:\n"
+    kStr += "      - 2\n"
+    kStr += "      - 0\n"
+    kStr += "    .args:\n"
+    for i in self.argList:
+      kStr += str(i)
+    kStr += "    .group_segment_fixed_size:   %u\n" % self.groupSegSize
+    kStr += "    .kernarg_segment_align:      %u\n" % 8
+    kStr += "    .kernarg_segment_size:       %u\n" % (((self.offset+7)//8)*8) # round up to .kernarg_segment_align
+    kStr += "    .max_flat_workgroup_size:    %u\n" % self.flatWgSize
+    kStr += "    .private_segment_fixed_size: %u\n" % 0
+    kStr += "    .sgpr_count:                 %u\n" % self.totalSgprs
+    kStr += "    .sgpr_spill_count:           %u\n" % 0
+    kStr += "    .vgpr_count:                 %u\n" % self.totalVgprs
+    kStr += "    .vgpr_spill_count:           %u\n" % 0
+    kStr += "    .wavefront_size:             %u\n" % self.waveFrontSize
+
+    kStr += "...\n"
+    kStr += ".end_amdgpu_metadata\n"
+    kStr += "%s:\n" % self.name
+    return kStr
+
+  def addArg(self, dSize, *args):
+    self.argList.append(SignatureArgumentV3(dSize, self.offset, *args))
+    self.offset += dSize
+
+  def prettyPrint(self, indent=""):
+    ostream = ""
+    ostream += "%s%s "%(indent, type(self).__name__)
+    return ostream
+
+class Signature(Item):
+  def __init__(self, codeObjectVersion, commentHeader, name=""):
+    self.name    = name
+    self.codeObjectVersion = codeObjectVersion
+    self.commentHeader = TextBlock(slash(commentHeader))
+    self.kernelDescriptor = None
+    self.optCommentList = []
+    self.codeMeta = None
+
+  def addKernelDescriptor(self, kd):
+    if self.codeObjectVersion == "v2":
+      pass
+    elif self.codeObjectVersion == "v3":
+      assert(isinstance(kd, SignatureKernelDescriptorV3))
+      self.kernelDescriptor = kd
+
+  def addOptConfigComment(self, tt, sg, vw, glvwA, glvwB, d2lA, d2lB, useSgprForGRO):
+    self.optCommentList.append(TextBlock(block3Line( "Optimizations and Config:" )))
+    self.optCommentList.append(TextBlock(block( "ThreadTile= %u x %u" % (tt[0], tt[1]) )))
+    self.optCommentList.append(TextBlock(block( "SubGroup= %u x %u" % (sg[0], sg[1]) )))
+    self.optCommentList.append(TextBlock(block( "VectorWidth=%u" % vw )))
+    self.optCommentList.append(TextBlock(block( "GlobalLoadVectorWidthA=%u, GlobalLoadVectorWidthB=%u" % (glvwA, glvwB) )))
+    self.optCommentList.append(TextBlock(block( "DirectToLdsA=%s" % d2lA )))
+    self.optCommentList.append(TextBlock(block( "DirectToLdsB=%s" % d2lB )))
+    self.optCommentList.append(TextBlock(block( "UseSgprForGRO=%s" % useSgprForGRO )))
+
+  def addCodeMeta(self, cm):
+    if self.codeObjectVersion == "v2":
+      pass
+    elif self.codeObjectVersion == "v3":
+      assert(isinstance(cm, SignatureCodeMetaV3))
+      self.codeMeta = cm
+
+  def __str__(self):
+    kStr = ""
+    kStr += str(self.commentHeader)
+    kStr += str(self.kernelDescriptor)
+    for i in self.optCommentList:
+      kStr += str(i)
+    kStr += str(self.codeMeta)
+    return kStr
+
+  def prettyPrint(self, indent=""):
+    ostream = ""
+    ostream += "%s%s "%(indent, type(self).__name__)
     return ostream
 
 class Module(Item):
@@ -148,30 +370,24 @@ class Module(Item):
     Convenience function to format arg as a comment and add TextBlock item
     This comment is a single line // MYCOMMENT
     """
-    self.addCode(TextBlock("// %s\n"%comment))
+    self.addCode(TextBlock(slash(comment)))
 
   def addComment0(self, comment):
     """
     Convenience function to format arg as a comment and add TextBlock item
     This comment is a single line /* MYCOMMENT  */
     """
-    self.addCode(TextBlock("/* %s */\n"%comment))
+    self.addCode(TextBlock(block(comment)))
 
   def addComment1(self, comment):
     """
     Convenience function to format arg as a comment and add TextBlock item
     This comment is a blank line followed by /* MYCOMMENT  */
     """
-    self.addCode(TextBlock("\n/* %s */\n"%comment))
+    self.addCode(TextBlock(blockNewLine(comment)))
 
   def addComment2(self, comment):
-    kStr = "\n/******************************************/\n"
-    for line in comment.split("\n"):
-      kStr += "/*"
-      kStr += " %-38s " % line
-      kStr += "*/\n"
-    kStr += "/******************************************/\n"
-    self.addCode(TextBlock(kStr))
+    self.addCode(TextBlock(block3Line(comment)))
 
   def addInst(self, *args):
     """

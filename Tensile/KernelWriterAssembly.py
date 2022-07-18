@@ -1616,7 +1616,7 @@ class KernelWriterAssembly(KernelWriter):
     kStr = ""
 
     signature = Component.Signature.find(self)
-    kStr += signature(self)
+    kStr += str(signature(self))
 
     instMacros = InstMacros(version=self.version,isa=self.kernel["ISA"], macInst=self.kernel["MACInstruction"],
                                  asmCaps=self.asmCaps, archCaps=self.archCaps, asmBugs=self.AsmBugs,

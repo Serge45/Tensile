@@ -192,7 +192,7 @@ class Component(metaclass=ComponentMeta):
         """
         Returns a comment which helps identify where a piece of code was generated.
         """
-        return "{}\n".format('.'.join(self.componentPath()))
+        return "{}".format('.'.join(self.componentPath()))
 
 class MAC(Component):
     """
