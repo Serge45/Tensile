@@ -3932,11 +3932,11 @@ class KernelWriterAssembly(KernelWriter):
       # do not generate local read code if DirectToVgpr is enabled
       tc = tP0["tensorChar"]
       if not kernel["DirectToVgpr%s"%tc]:
-        kStr += component(self, kernel, tP0)
+        kStr += str(component(self, kernel, tP0))
       # do not generate local read code if DirectToVgpr is enabled
       tc = tP1["tensorChar"]
       if not kernel["DirectToVgpr%s"%tc]:
-        kStr += component(self, kernel, tP1)
+        kStr += str(component(self, kernel, tP1))
 
     return kStr
 
