@@ -22,7 +22,7 @@
 from . import Code
 from .Common import print2, printExit, printWarning
 from .Utils import roundUpToNearestMultiple
-from .AsmUtils import inst, vgpr, sgpr
+from .AsmUtils import vgpr, sgpr
 import traceback
 from enum import Enum
 

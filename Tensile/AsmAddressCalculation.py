@@ -82,10 +82,10 @@ class AddrCalculation:
         (d1,d0,vc1,vc0) = self.element
         self.coord0Vgpr = None # will set below
 
-        # module.addText(self.kernelWriter.comment1("store addr=v%u coordOffset0=%u"% \
-        #    (self.addr, self.coordOffset0)))
-        module.addText(self.kernelWriter.comment1("(d1,vc1,d0,vc0)=(%u,%u,%u,%u)"\
-            % (d1,vc1,d0,vc0)))
+        # module.addComment0("store addr=v%u coordOffset0=%u"% \
+        #    (self.addr, self.coordOffset0))
+        module.addComment0("(d1,vc1,d0,vc0)=(%u,%u,%u,%u)"\
+            % (d1,vc1,d0,vc0))
         if ss.optSingleColVgpr:
             self.coord0Vgpr = kw.coord0
         elif not ss.optSharedColVgpr or (d1 == vc1 == 0):
@@ -135,7 +135,7 @@ class AddrCalculation:
             #   - tmp+1 is DIV output
             #   - tmp+2 is scratch
             idxChar= globalParameters["IndexChars"][idx]
-            module.addText(kw.comment1("extract %s"%kw.sizeRef(idx)))
+            module.addComment0("extract %s"%kw.sizeRef(idx))
             assert(tmpVgpr+1 != packedBits) # bad since we still need packedBits below for remainder (can't overwrite here)
             module.addInst("V_MAGIC_DIV", \
                            tmpVgpr+1, vgpr(packedBits), sgpr("MagicNumberSize%s"%idxChar), \
@@ -166,7 +166,7 @@ class AddrCalculation:
 
         if len(packedIndices)>1:
             # if we unpacked something, then scale it to BPE
-            module.addText(kw.comment1("extract final %s"%kw.sizeRef(packedIndices[-1])))
+            module.addComment0("extract final %s"%kw.sizeRef(packedIndices[-1]))
             module.addInst("v_mul_lo_u32", vgpr(tmpVgpr+2), vgpr(tmpVgpr+1), \
                       kw.strideRef(storeChar, packedIndices[-1]), "scale final extracted dim")
             module.addInst("_v_add_u32", vgpr(addrVgpr), vgpr(addrVgpr), \
@@ -355,7 +355,7 @@ class AddrCalculation:
             if self.rowInc > 0:
                 self.rowIncDirtyRowPtr = 1
                 #assert (not kernel["ProblemType"]["UseInitialStridesCD"])
-                module.addText(kw.comment("Fix for UseInitialStridesCD, emitAddressSetupCode"))
+                module.addComment1("Fix for UseInitialStridesCD, emitAddressSetupCode")
 
                 if len(kernel["PackedC1IndicesX"]) == 1:
                     strideChar = self.kernelWriter.indexChars[kernel["PackedC1IndicesX"][0]]
@@ -379,7 +379,7 @@ class AddrCalculation:
                 strideC1 = "StrideC%s" % (kw.indexChars[packedC1[0]])
                 strideD1 = "StrideD%s" % (kw.indexChars[packedC1[0]])
 
-                module.addText(kw.comment("shift vector components d1"))
+                module.addComment1("shift vector components d1")
                 vw = kernel["GlobalLoadVectorWidthB"]
                 vTmp1 = tmpVgpr
                 vTmp2 = tmpVgpr+1

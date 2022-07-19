@@ -27,27 +27,6 @@ import random
 import string
 
 ########################################
-# Format Instruction
-########################################
-
-def inst(*args):
-    # exclude the last parameter (before comment)
-    # if it is empty (needed for clang++ assembler)
-    if len(args) > 2 and args[len(args)-2] == "":
-        params = args[0:len(args)-2]
-    else:
-        params = args[0:len(args)-1]
-    comment = args[len(args)-1]
-    formatting = "%s"
-    if len(params) > 1:
-        formatting += " %s"
-    for _ in range(0, len(params)-2):
-        formatting += ", %s"
-    instStr = formatting % (params)
-    line = "%-50s // %s\n" % (instStr, comment)
-    return line
-
-########################################
 # Format Trailing Comment Only
 ########################################
 
@@ -301,17 +280,17 @@ def scalarStaticMultiply(product, operand, multiplier, tmpSgpr=None, comment="")
         comment = "%s = %s * %s" % (product, operand, multiplier)
 
     if multiplier == 0:
-            return inst("s_mov_b64", product, hex(multiplier), comment)
+            return Inst("s_mov_b64", product, hex(multiplier), comment)
 
     # TODO- to support non-pow2, need to use mul_32 and mul_hi_32 ?
     assert ((multiplier & (multiplier - 1)) == 0) # assert pow of 2
 
     multiplier_log2 = log2(multiplier)
     if multiplier_log2==0 and product == operand:
-        return instCommentOnly(comment + " (multiplier is 1, do nothing)")
+        return Inst("", comment + " (multiplier is 1, do nothing)")
     else:
         # notice that the src-order of s_lshl_b64 is different from v_lshlrev_b32.
-        return inst("s_lshl_b64", product, operand, hex(multiplier_log2), comment)
+        return Inst("s_lshl_b64", product, operand, hex(multiplier_log2), comment)
 
 ########################################
 # Saturate Cast Integer

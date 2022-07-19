@@ -21,7 +21,7 @@
 
 from .. import Code
 from ..Component import ComputeStoreVgprs
-from ..AsmUtils import log2, staticMultiply, vgpr, sgpr, inst, vectorStaticDivide, vectorStaticRemainder
+from ..AsmUtils import log2, staticMultiply, vgpr, sgpr, vectorStaticDivide, vectorStaticRemainder
 
 class ComputeStoreVgprsMFMA(ComputeStoreVgprs):
     kernel = {"EnableMatrixInstruction": True,

@@ -329,11 +329,31 @@ class Module(Item):
     if isinstance(item,Item):
       item.parent = self
       self.itemList.append(item)
-    elif isinstance(item,str):
-      self.addCode(TextBlock(item))
     else:
       assert 0, "unknown item type (%s) for Module.addCode. item=%s"%(type(item), item)
     return item
+
+  def addCodeList(self, items):
+    """
+    Add items to module.
+
+    Returns items to facilitate one-line create/add patterns
+    """
+    assert(isinstance(items, list))
+    for i in items:
+      self.addCode(i)
+    return items
+
+  def addModuleAsFlatItems(self, module):
+    """
+    Add items to module.
+
+    Returns items to facilitate one-line create/add patterns
+    """
+    assert(isinstance(module, Module))
+    for i in module.flatitems():
+      self.addCode(i)
+    return module
 
   def addCodeBeforeItem(self, item, newItem):
     """
@@ -394,12 +414,6 @@ class Module(Item):
     Convenience function to construct a single Inst and add to items
     """
     self.addCode(Inst(*args))
-
-  def addText(self,text):
-    """
-    Convenience function to construct a TextBlock and add to items
-    """
-    self.addCode(TextBlock(text))
 
   def prettyPrint(self,indent=""):
     ostream = ""

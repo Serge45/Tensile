@@ -21,7 +21,7 @@
 
 from .. import Code
 from ..Component import LraTileAssignment
-from ..AsmUtils import inst, vgpr, sgpr, vectorStaticDivide, staticMultiply, vectorStaticRemainder
+from ..AsmUtils import vgpr, sgpr, vectorStaticDivide, staticMultiply, vectorStaticRemainder
 
 class LraTileAssignmentMFMA(LraTileAssignment):
     kernel = {"EnableMatrixInstruction": True}
