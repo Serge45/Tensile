@@ -1593,14 +1593,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
       self.dontAppendCode = False
       self.dontAppendCode = self.dontAppendCode or forceNoTileCode
 
-      # final offsets
-      kl.append(self.lwaFinalOffsets(kernel, tensorParametersA))
-      kl.append(self.lwaFinalOffsets(kernel, tensorParametersB))
-
-      # declare addresses
-      kl.append(self.lwaDeclareAddresses(kernel, tensorParametersA))
-      kl.append(self.lwaDeclareAddresses(kernel, tensorParametersB))
-
     ###########################################################################
     # summations loops: open
     ###########################################################################
@@ -2097,9 +2089,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
               kl.append(self.comment1("local read increment b"))
               kl.append(self.localReadInc(kernel, iui, tensorParametersB))
 
-    kl.append(self.closeString(kernel))
-    kl.append(self.openString(kernel))
-
     pflr     = self.numItersPLR  # how many pf already done above
 
     ############################################################################
@@ -2330,8 +2319,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
         pack[luIdx] = Code.Module()
       else:
         printExit("TensileLite does not support MAC instructions.")
-    kl.append(self.closeString(kernel))
-    kl.append(self.openString(kernel))
 
     # close unrolled loop
     if expand:
@@ -2355,24 +2342,13 @@ class KernelWriter(metaclass=abc.ABCMeta):
     ####################################
     # Begin String
     kl = []
-    kl.append(self.openString(kernel))
-
-    ####################################
-    # Function Prefix
-    kl.append(self.comment3("Function Prefix"))
-    kl.append(self.functionPrefix(kernel))
 
     ####################################
     # Function Signature
     ####################################
     kl.append(self.comment3("Begin Kernel"))
-    kl.append(self.functionSignaturePrefix(kernel))
-
     beforeFunctionSignature = '\n'.join([str(x) for x in kl])
     kl = []
-
-    kl.append(self.functionSignatureSuffix(kernel))
-    kl.append(self.functionBegin(kernel))
 
     kl.append(self.comment3("Allocate Resources"))
     kl.append(self.allocateResources(kernel))
@@ -2847,7 +2823,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
     kl.append(self.functionEnd(kernel, True))
     kl.append(self.functionSuffix(kernel))
 
-    kl.append(self.closeString(kernel))
     kStr = '\n'.join([str(x) for x in kl])
     afterFunctionSignature = kStr
 
@@ -3404,52 +3379,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       #  self.enableSingleNLLOpt = True
 
   ##############################################################################
-  # Open String
-  ##############################################################################
-  @abc.abstractmethod
-  def openString(self, kernel):
-    return ""
-
-  ##############################################################################
-  # Close String
-  ##############################################################################
-  @abc.abstractmethod
-  def closeString(self, kernel):
-    return ""
-
-  ##############################################################################
-  # Function Prefix
-  ##############################################################################
-  @abc.abstractmethod
-  def functionPrefix(self, kernel):
-    return ""
-
-  ##############################################################################
-  # Function Signature Prefix
-  ##############################################################################
-  @abc.abstractmethod
-  def functionSignaturePrefix(self, kernel):
-    return ""
-
-  ##############################################################################
   # Function Signature
   ##############################################################################
   @abc.abstractmethod
   def functionSignature(self, kernel ):
-    return ""
-
-  ##############################################################################
-  # Function Signature Suffix
-  ##############################################################################
-  @abc.abstractmethod
-  def functionSignatureSuffix(self, kernel):
-    return ""
-
-  ##############################################################################
-  # Function Begin
-  ##############################################################################
-  @abc.abstractmethod
-  def functionBegin(self, kernel):
     return ""
 
   ##############################################################################
@@ -3623,13 +3556,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
     return ""
 
   ##############################################################################
-  # Global Read Addresses: Branch A/B
-  ##############################################################################
-  @abc.abstractmethod
-  def graBranch(self, kernel, tP):
-    return ""
-
-  ##############################################################################
   # Global Read Addresses: Shift A/B
   ##############################################################################
   @abc.abstractmethod
@@ -3677,20 +3603,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
   ##############################################################################
   @abc.abstractmethod
   def lwaFirstOffset(self, kernel, tP, uDu):
-    return ""
-
-  ##############################################################################
-  # Local Write Addresses: Final Offsets A/B
-  ##############################################################################
-  @abc.abstractmethod
-  def lwaFinalOffsets(self, kernel, tP):
-    return ""
-
-  ##############################################################################
-  # Local Write Addresses: Declare Addresses A/B
-  ##############################################################################
-  @abc.abstractmethod
-  def lwaDeclareAddresses(self, kernel, tP):
     return ""
 
   ##############################################################################

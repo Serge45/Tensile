@@ -30,7 +30,8 @@ from .AsmMemoryInstruction import MemoryInstruction
 from .AsmRegisterPool import RegisterPool
 from .AsmAssert import Assert, bomb
 from .AsmMacros import InstMacros, macroRegister
-from .AsmUtils import vgpr, sgpr, log2, vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
+from .AsmUtils import vgpr, sgpr, log2, s_mul_int_64_32, \
+                      vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
                       scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, replacePlaceHolder, \
                       SaturateCastType, LabelManager
 from .Activation import ActivationModule, ActivationType, RemoveDuplicateAssignment
@@ -1600,13 +1601,6 @@ class KernelWriterAssembly(KernelWriter):
     if kernel["CheckTensorDimAsserts"] : print ("\n***WARNING: CheckTensorDimAsserts enabled, may impact performance\n")
     if kernel["CheckDimOverflow"] : print ("\n***WARNING: CheckDimOverflow enabled, may impact performance\n")
 
-
-  ##############################################################################
-  # Function Prefix
-  ##############################################################################
-  def functionPrefix(self, kernel):
-    return ""
-
   ##############################################################################
   def functionSignature(self, kernel ):
     """
@@ -2089,13 +2083,6 @@ class KernelWriterAssembly(KernelWriter):
       module.addInst(".if", "0", "")
 
     return module
-
-  ##############################################################################
-  # Function Beginning
-  ##############################################################################
-  def functionSignaturePrefix(self, kernel): return ""
-  def functionSignatureSuffix(self, kernel): return ""
-  def functionBegin(self, kernel): return ""
 
   ##############################################################################
   # getKernArg
@@ -3025,12 +3012,6 @@ class KernelWriterAssembly(KernelWriter):
     return Code.Module("graUnrollOffsets (Empty)") if self.dontAppendCode else module
 
   ##############################################################################
-  # Global Read Addresses: Branch A/B
-  ##############################################################################
-  def graBranch(self, kernel, tP):
-    return ""
-
-  ##############################################################################
   # Global Read Addresses: Shift A/B
   # See if the load (including vw) will extend past the 'free' dim of the
   # tensor.  If so clip to the last legal value which is inside the array
@@ -3906,18 +3887,6 @@ class KernelWriterAssembly(KernelWriter):
     return Code.Module("lwaUnrollAssignment (Empty)") if self.dontAppendCode or kernel["DirectToVgpr%s"%tc] else module
 
   ##############################################################################
-  # Local Write Addresses: Final Offsets A/B
-  ##############################################################################
-  def lwaFinalOffsets(self, kernel, tP):
-    return ""
-
-  ##############################################################################
-  # Local Write Addresses: Declare Addresses A/B
-  ##############################################################################
-  def lwaDeclareAddresses(self, kernel, tP):
-    return ""
-
-  ##############################################################################
   # Local Read Addresses: Tile Assignment
   ##############################################################################
   def lraTileAssignment(self, kernel, tPA, tPB):
@@ -4383,14 +4352,14 @@ class KernelWriterAssembly(KernelWriter):
       imod.addComment1("SRDs += (StaggerUIter) * GlobalReadIncs%s+%u"% (tc, self.unrollIdx))
 
       # Calculate the stagger byte offset
-      imod.addCode(self.s_mul_i64_i32(
+      imod.addModuleAsFlatItems(self.s_mul_i64_i32(
                 sgpr(staggerTmp), sgpr(staggerTmp+1), \
                 sgpr("StaggerUIter"), sgpr("GlobalReadIncs%s+%u"%(tc, self.unrollIdx)), \
                 " stagger byte offset"))
 
       # Amount of bytes to add to get back to start.
       # on the llop iteration which matches StaggerUIter, this offset added instead of GlobalReadInc
-      imod.addCode(self.s_mul_i64_i32(sgpr("WrapU%s+0"%tc), sgpr("WrapU%s+1"%tc), \
+      imod.addModuleAsFlatItems(self.s_mul_i64_i32(sgpr("WrapU%s+0"%tc), sgpr("WrapU%s+1"%tc), \
                 self.loopCounter(kernel, self.unrollIdx), sgpr("GlobalReadIncs%s+%u"%(tc,self.unrollIdx)), \
                 "Number of bytes accessed by the unroll loop"))
 
@@ -4446,7 +4415,7 @@ class KernelWriterAssembly(KernelWriter):
       # might be able to refactor this to eliminate signed math
       imod.addInst("s_sub_i32", sgpr(tmp), 3 if kernel["PrefetchGlobalRead"] else 2, \
                   sgpr("StaggerUIter"), "")
-      imod.addCode(self.s_mul_i64_i32(sgpr(tmp), sgpr(tmp+1), \
+      imod.addModuleAsFlatItems(self.s_mul_i64_i32(sgpr(tmp), sgpr(tmp+1), \
                   sgpr(tmp), sgpr("GlobalReadIncs%s+%u"%(tc,self.unrollIdx)), \
                   "start offset S in bytes"))
       imod.addInst("s_sub_u32", sgpr(tmp), sgpr(tmp), sgpr("WrapU%s"%tc), "S - WrapU")
@@ -6597,10 +6566,6 @@ class KernelWriterAssembly(KernelWriter):
     module.addCode(self.lwaUnrollAssignment(kernel, tP))
     # local write local write first offsets
     module.addCode(self.lwaFirstOffset(kernel, tP, uDu))
-    # local write final offsets
-    module.addCode(self.lwaFinalOffsets(kernel, tP))
-    # local write declare addresses
-    module.addCode(self.lwaDeclareAddresses(kernel, tP))
 
     return module
 
@@ -10060,18 +10025,6 @@ class KernelWriterAssembly(KernelWriter):
     return module
 
   ##############################################################################
-  # Open String
-  ##############################################################################
-  def openString(self, kernel):
-    return ""
-
-  ##############################################################################
-  # Close String
-  ##############################################################################
-  def closeString(self, kernel):
-    return ""
-
-  ##############################################################################
   # WaitCnt- DONE
   # 3 components can contribute to the waitcnt:
   #   - Pending global reads.  (skipGlobalRead)
@@ -10346,40 +10299,19 @@ class KernelWriterAssembly(KernelWriter):
 
     return module
 
-  # Perform 32-bit scalar mul and save 64-bit result in two SGPR
-  # src0 and src1 are 32-bit ints in scalar sgpr or small int constants (<64?))
-  # signed indicates if input and output data is signed
-  # return returns in dst0:dest (lower 32-bit in dst0, high 64-bit in dst1))
-  def s_mul_int_64_32(self, dst0, dst1, src0, src1, signed, comment):
-    module = Code.Module("s_mul_int_64_32")
-    sign = "i" if signed else "u"
-    assert(dst1 != src0) # no worky since dst1 overwritten by first mul operations
-    assert(dst1 != src1) # no worky since dst1 overwritten by first mul operations
-    # the else path below has less restrictions but prefer consistency
-    if globalParameters["AsmCaps"][self.version]["HasSMulHi"]:
-      module.addInst("s_mul_hi_{}32".format(sign), dst1, src0, src1, comment)
-      module.addInst("s_mul_i32", dst0, src0, src1, comment)
-    else:
-      if type(src1) != 'str' or not src1.startswith("s"):
-        # Swap operands, need a scalar sgpr in src1 (not a constant)
-        t = src0
-        src0 = src1
-        src1 = t
-      vtmp0 = self.vgprPool.checkOut(2)
-      vtmp1 = vtmp0+1
-      module.addInst("v_mov_b32", vgpr(vtmp0), src0, comment)
-      module.addInst("v_mul_hi_{}32".format(sign), vgpr(vtmp1), vgpr(vtmp0), src1, comment)
-      module.addInst("v_readfirstlane_b32", dst1, vgpr(vtmp1), comment)
-      module.addInst("v_mul_lo_u32", vgpr(vtmp1), vgpr(vtmp0), src1, comment)
-      module.addInst("v_readfirstlane_b32", dst0, vgpr(vtmp1), comment)
-      self.vgprPool.checkIn(vtmp0)
+  def s_mul_u64_u32 (self, dst0, dst1,  src0, src1, comment):
+    vtmp0 = self.vgprPool.checkOut(2)
+    module = s_mul_int_64_32(globalParameters["AsmCaps"][self.version]["HasSMulHi"], \
+                             dst0, dst1, src0, src1, False, vtmp0, comment)
+    self.vgprPool.checkIn(vtmp0)
     return module
 
-  def s_mul_u64_u32 (self, dst0, dst1,  src0, src1, comment):
-    return self.s_mul_int_64_32(dst0, dst1, src0, src1, False, comment)
-
   def s_mul_i64_i32 (self, dst0, dst1,  src0, src1, comment):
-    return self.s_mul_int_64_32(dst0, dst1, src0, src1, True, comment)
+    vtmp0 = self.vgprPool.checkOut(2)
+    module = s_mul_int_64_32(globalParameters["AsmCaps"][self.version]["HasSMulHi"], \
+                             dst0, dst1, src0, src1, True, vtmp0, comment)
+    self.vgprPool.checkIn(vtmp0)
+    return module
 
   def getBomb(self, cookie=None):
     scratchVgpr = self.vgprPool.checkOut(2)

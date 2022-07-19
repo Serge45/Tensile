@@ -27,14 +27,6 @@ import random
 import string
 
 ########################################
-# Format Trailing Comment Only
-########################################
-
-def instCommentOnly(comment=""):
-    # Aligned with inst (50 chars)
-    return "%-50s // %s\n" % ("", comment)
-
-########################################
 # Format GPRs
 ########################################
 
@@ -74,6 +66,38 @@ def accvgpr(*args):
 
 def log2(x):
     return int(log(x, 2) + 0.5)
+
+########################################
+# Compound instructions
+########################################
+
+# Perform 32-bit scalar mul and save 64-bit result in two SGPR
+# src0 and src1 are 32-bit ints in scalar sgpr or small int constants (<64?))
+# signed indicates if input and output data is signed
+# return returns in dst0:dest (lower 32-bit in dst0, high 64-bit in dst1))
+# Requires 2 tmp vgprs
+def s_mul_int_64_32(hasSMulHi, dst0, dst1, src0, src1, signed, vtmp0, comment):
+    module = Module("s_mul_int_64_32")
+    sign = "i" if signed else "u"
+    assert(dst1 != src0) # no worky since dst1 overwritten by first mul operations
+    assert(dst1 != src1) # no worky since dst1 overwritten by first mul operations
+    # the else path below has less restrictions but prefer consistency
+    if hasSMulHi:
+        module.addInst("s_mul_hi_{}32".format(sign), dst1, src0, src1, comment)
+        module.addInst("s_mul_i32", dst0, src0, src1, comment)
+    else:
+        if type(src1) != 'str' or not src1.startswith("s"):
+            # Swap operands, need a scalar sgpr in src1 (not a constant)
+            t = src0
+            src0 = src1
+            src1 = t
+        vtmp1 = vtmp0+1
+        module.addInst("v_mov_b32", vgpr(vtmp0), src0, comment)
+        module.addInst("v_mul_hi_{}32".format(sign), vgpr(vtmp1), vgpr(vtmp0), src1, comment)
+        module.addInst("v_readfirstlane_b32", dst1, vgpr(vtmp1), comment)
+        module.addInst("v_mul_lo_u32", vgpr(vtmp1), vgpr(vtmp0), src1, comment)
+        module.addInst("v_readfirstlane_b32", dst0, vgpr(vtmp1), comment)
+    return module
 
 ########################################
 # Divide & Remainder
