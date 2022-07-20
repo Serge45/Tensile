@@ -166,12 +166,7 @@ class KernelWriterAssembly(KernelWriter):
     self.maxSgprs = 102
     self.maxOccupancy = 10
 
-    self.endLine = "\n"
     self.syncStr = "s_barrier"
-    self.commentPrefix = "/*"
-    self.commentSuffix = "*/"
-    self.commentHR = "*"*40
-    self.indent = ""
     self.labels = LabelManager()
     self.localReadOffsetA = 0
     self.localReadOffsetB = 0

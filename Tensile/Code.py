@@ -729,7 +729,35 @@ class Inst(Item):
       formatting += "\\n\\t\""
     return self.formatWithComment(formatting, self.comment, *params)
 
-class WaitCnt (Module):
+class CompoundInst(Item):  # FIXME: Workaround for WaitCnt
+  def __init__(self, name=""):
+    self.name = name
+    self.instList = []
+
+  def addInst(self, *args):
+    self.instList.append(Inst(*args))
+
+  def addComment0(self, comment):
+    """
+    Convenience function to format arg as a comment and add TextBlock item
+    This comment is a single line /* MYCOMMENT  */
+    """
+    self.instList.append(TextBlock(block(comment)))
+
+  def prettyPrint(self,indent=""):
+    ostream = ""
+    ostream += '%s%s "%s"\n'%(indent, type(self).__name__, self.name)
+    for i in self.instList:
+      ostream += i.prettyPrint(indent.replace("|--", "| ") + "|--")
+    return ostream
+
+  def __str__(self):
+    kStr = ""
+    for i in self.instList:
+      kStr += str(i)
+    return kStr
+
+class WaitCnt(CompoundInst):
   """
   Construct a waitcnt from specified lgkmcnt and vmcnt:
   lgkmcnt, vmcnt:
@@ -746,11 +774,8 @@ class WaitCnt (Module):
     self.vmcnt   = vmcnt
     self.comment = "lgkmcnt={} vmcnt={}".format(lgkmcnt, vmcnt) + comment
 
-    # let this derived class play nicely with Module.prettyPrint()
-    self.__dict__.update(self.instructions().__dict__)
-
   def instructions(self):
-    rv = Module()
+    self.instList = []
     main_args = []
     wait_store = False
     if self.lgkmcnt != -1:
@@ -763,16 +788,19 @@ class WaitCnt (Module):
       main_args += ["vmcnt(%u)" % self.vmcnt]
 
     if len(main_args) > 0:
-      rv.addInst("s_waitcnt", *main_args, self.comment)
+      self.addInst("s_waitcnt", *main_args, self.comment)
       if wait_store and self.version[0] == 10 and self.vmcnt != -1:
-        rv.addInst("s_waitcnt_vscnt", "null", self.vmcnt, "writes")
+        self.addInst("s_waitcnt_vscnt", "null", self.vmcnt, "writes")
     else:
-      rv.addComment0(self.comment)
+      self.addComment0(self.comment)
 
-    return rv
+  def prettyPrint(self,indent=""):
+    self.instructions()
+    return super().prettyPrint(indent)
 
   def __str__(self):
-    return str(self.instructions())
+    self.instructions()
+    return super().__str__()
 
 # uniq type that can be used in Module.countType
 class GlobalReadInst (Inst):
@@ -792,55 +820,6 @@ class LocalReadInst (Inst):
     self.readToTempVgpr = readToTempVgpr
     Inst.__init__(self,*args)
 
-################################################################################
-# MFMA Instruction
-################################################################################
-class  MFMAInst (Inst):
-
-  """
-  Construct a MFMA instruction from specified precision Type, aIndex, bIndex, PLR, innerUnroll:
-
-  dataType:
-  aIndex:  index value from range (0, kernel["ThreadTile0"])
-  bIndex:  index value from range (0, kernel["ThreadTile1"])
-
-  PLR:     valida values 0,1
-
-  usage Module.addCode(Code.MFMAInst())
-
-  """
-  def  __init__(self,kernel,aIdx,bIdx,PLRval,innerUnroll):
-       self.endLine = ""
-       self.version = globalParameters["CurrentISA"]
-       self.kernel  = kernel
-       self.aIdx    = aIdx
-       self.bIdx    = bIdx
-       self.PLR     = PLRval
-       self.innerUnroll = innerUnroll
-
-  def __str__(self):
-      # single precision
-      kStr = ""
-      numOfRowsperMfma = 1
-      numOfRowInsts = self.kernel["ThreadTile0"]/numOfRowsperMfma
-      #numOfColInsts = kernel["ThreadTile1"]/kernel["MatrixInstN"]
-      numOfDstRgs = (self.kernel["MatrixInstN"] * self.kernel["MatrixInstM"] * self.kernel["MatrixInstB"] // self.kernel["WavefrontSize"])
-      if self.kernel["ProblemType"]["DataType"].isSingle():
-        for iui in range(0, self.innerUnroll):
-           cStr = "a[(%u+%u*%u)*%u):((((%u+%u*%u)*%u)+%u)-1)]" % (self.aIdx,self.bIdx,numOfRowInsts,numOfDstRgs,self.aIdx,numOfDstRgs,self.bIdx,numOfRowInsts,numOfDstRgs)
-           aStr = "v[%s+%u]" \
-               % ("vgprValuA_X%u_I%u"%(self.PLR,iui), self.aIdx)
-           bStr = "v[%s+%u]" \
-               % ("vgprValuB_X%u_I%u"%(self.PLR,iui), self.bIdx)
-           kStr += "v_mfma_f32_%ux%ux%uf32 %s, %s, %s, %s%s" % (self.kernel["MatrixInstM"], self.kernel["MatrixInstN"], self.kernel["MatrixInstK"], cStr, aStr, bStr, cStr, self.endLine)
-      else:
-        printExit("Assembly doesn't support %s" % self.kernel["ProblemType"]["DataType"])
-
-      return self.formatWithComment(kStr, "")
-
-  def getLatency(self):
-      # return latency in cycles
-      return  (self.kernel["MatrixInstM"] // 4 ) * 8
 class BitfieldStructure(ctypes.Structure):
   def field_desc(self, field):
     fname = field[0]
@@ -954,83 +933,3 @@ def SrdUpperValue(isa):
     return SrdUpperValue10XX.default()
   else:
     return SrdUpperValue9XX.default()
-
-
-
-class OpTemplate(Module):
-    """
-    Base template for high level operator (mem/alu), template contain data and code
-    section for implementing high level operator;
-    resources required for high level operator are already accounted in main parts
-    kernel section
-
-    Usage: high level operator like unary,binary operators opearting on tensor dimension or
-           memory operator that stores/loads tensor from near/far memory
-
-    Initially monolithic code segments doing high level operator  vpgr/sgpr (temp ones ) are placeholders
-    must be replaced when its actually placed in main kernel
-
-
-    """
-
-    ## constructor
-    def __init__(self, name=""):
-      self.name     = name
-      ## list order of operations
-      ## Module key "LaddrCalcA", "lrda", "lwra", "StoreC", "loadC",
-      ## order of code is important
-      self.itemList = []   ## list of Code Modules
-      self.tmpSgpr  = None
-      self.tmpVgpr  = None
-
-    def __str__(self):
-      s = ""
-      if printModuleNames:
-        s += "// %s { \n" % self.name
-      s += "".join([str(x) for x in self.itemList])
-      if printModuleNames:
-        s += "// } %s\n" % self.name
-      return s
-
-    def findNamedCode(self, targetName):
-      return next((Moditem for Moditem in self.itemList if Moditem.name==targetName), None)
-
-    def addModule(self, ModItem):
-      """
-      Add specified Code modules to the list of Modules in the opTemplate
-      ModItem MUST be a Module, list of instructions not string
-      returns Module to facilitate one-line create/add patterns
-      """
-      if isinstance(ModItem,Module):
-        #self.itemList.append(ModItem)
-        self.itemList.extend(ModItem.itemList)
-      else:
-        assert 0, "unknown ModItem type (%s) for OpTemplate.addCode. Moditem=%s"%(type(ModItem), ModItem)
-      return ModItem
-
-      def addTempSgpr(self, sgpr):
-        self.tmpSgpr = sgpr
-
-      def addTempVgpr(self, vgpr):
-        self.tmpVgpr = vgpr
-
-class MemOpTemplate(OpTemplate):
-    """
-    template for local/global data movement code sections
-    list should have sequence of code modules supporting data movement,
-    including offset calculation , offset increment, load/store
-
-    current code sections are expected to follow program consistency (no out of order in scheduling them)
-
-    This needs further refinement- handling temp registers in code
-    temporary register(s) used at the time of code generation(S) need to be replaced when its called
-    temp register in instruction should use _sgpr%len_  or _vgpr%len_  len determines number of temp register
-
-    before using code , allocate number of registers required for code
-
-    """
-    def __init__(self, name=""):
-      self.name = name
-      self.itemList = []   ## list of  COde Modules
-      self.tmpSgpr  = None
-      self.tmpVgpr  = None
