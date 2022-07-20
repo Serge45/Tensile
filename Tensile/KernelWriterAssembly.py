@@ -2548,8 +2548,8 @@ class KernelWriterAssembly(KernelWriter):
         self.vgprPool.checkIn(quotient)
         self.vgprPool.checkIn(remainder)
       else:
-        module.addComment("// GSU-not-WGMapRR :nwg1 = (size%s + MT%s - 1) / MT%s;%s" \
-            % (self.tileChar1, self.tileChar1, self.tileChar1, self.endLine))
+        module.addComment("// GSU-not-WGMapRR :nwg1 = (size%s + MT%s - 1) / MT%s;" \
+            % (self.tileChar1, self.tileChar1, self.tileChar1))
 
         # gsuSumIdx = wg1 % GSU
         # wg1       = wg1 / GSU
@@ -10035,7 +10035,7 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   def wait(self, kernel, tPA, tPB, skipGlobalRead, skipLocalWrite, \
       skipLocalRead, comment):
-    if not self.do["Wait"]: return ""
+    if not self.do["Wait"]: return Code.Module("noWait")
     # skip = -1 -> ignore
     # skip =  n -> waitcnt(n*num)
 
