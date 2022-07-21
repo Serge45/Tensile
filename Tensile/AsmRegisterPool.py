@@ -312,3 +312,18 @@ class RegisterPool:
   def stateDetailed(self):
     for index, register in enumerate(self.vgprPool.pool):
         print("%u: %s"%(index, register.tag))
+
+class SmartPoolContainer:
+  """ A temporary register which is automatically returned to pool when class is destroyed. """
+  def __init__(self, regPool, num, align, tag=None):
+    self.regPool = regPool
+    self.regIdx = regPool.checkOutAligned(num, align, tag=tag, preventOverflow=False)
+
+  def idx(self):
+    return self.regIdx
+
+  def __int__(self):
+    return self.idx()
+
+  def __del__(self):
+    self.regPool.checkIn(self.regIdx)

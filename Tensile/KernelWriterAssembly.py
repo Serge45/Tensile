@@ -26,7 +26,7 @@ from .KernelWriter import KernelWriter
 from .SolutionStructs import isPackedIndex
 from .Utils import ceil_divide
 from .AsmMemoryInstruction import MemoryInstruction
-from .AsmRegisterPool import RegisterPool
+from .AsmRegisterPool import RegisterPool, SmartPoolContainer
 from .AsmStoreState import StoreState
 from .AsmAssert import Assert, bomb
 from .AsmMacros import InstMacros, macroRegister
@@ -421,28 +421,13 @@ class KernelWriterAssembly(KernelWriter):
     else:
       raise RuntimeError("Could not find valid memory instruction for operation=%s, width=%f, kernel=%s" %(operation, width, self.kernelName))
 
-  class TmpSgpr:
-    """ A temporary register which is automatically returned to sgpr pool when class is destroyed. """
-    def __init__(self, regPool, num, align, tag=None):
-      self.regPool = regPool
-      self.regIdx = regPool.checkOutAligned(num, align, tag=tag, preventOverflow=False)
-
-    def idx(self):
-      return self.regIdx
-
-    def __int__(self):
-      return self.idx()
-
-    def __del__(self):
-      self.regPool.checkIn(self.regIdx)
-
   def getTmpSgpr(self, num, align=None, tag=None):
     if align==None:
       align = 1 if num==1 else 2
     if tag==None:
       tag = "getTmpSgpr(%d)"%num
 
-    t = self.TmpSgpr(self.sgprPool, num, align, tag)
+    t = SmartPoolContainer(self.sgprPool, num, align, tag)
     if t.idx()+num > self.maxSgprs:
       self.overflowedResources = 2
       if self.db["AssertOnSgprOverflow"]:
