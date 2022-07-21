@@ -32,7 +32,8 @@ from .AsmAssert import Assert, bomb
 from .AsmMacros import InstMacros, macroRegister
 from .AsmUtils import vgpr, sgpr, log2, s_mul_int_64_32, \
                       vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
-                      scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, replacePlaceHolder, \
+                      scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, sBranchIfZero, \
+                      replacePlaceHolder, \
                       SaturateCastType, LabelManager
 from .Activation import ActivationModule, ActivationType, RemoveDuplicateAssignment
 
@@ -2112,29 +2113,8 @@ class KernelWriterAssembly(KernelWriter):
           module.addInst("_s_load_b64", sgpr("AddressD", 2), sgpr("AddressD",2), sgpr(tmpSgpr), "load global buffer D address")
 
       endCheckLabel = Code.Label(self.labels.getName(f"label_skip_c_buffer_deref_{Batch}"), "")
-      if kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
-        module.addInst("v_cmp_eq_f64", sgpr(tmpSgpr, laneSC), sgpr("Beta", 2), 0.0, "Beta.real == 0.0 ?")
-        module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Beta+2", 2), 0.0, "Beta.imag == 0.0 ?")
-        module.addInst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Beta == 0 ?")
-        module.addInst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if beta == 0")
-        module.addInst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
-      elif kernel["ProblemType"]["ComputeDataType"].isDouble():
-        module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Beta", 2), 0.0, "Beta == 0.0 ?")
-        module.addInst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if Beta == 0")
-      elif kernel["ProblemType"]["ComputeDataType"].isSingleComplex():
-        module.addInst("v_cmp_eq_f32", sgpr(tmpSgpr, laneSC), sgpr("Beta"), 0.0, "Beta.real == 0.0f ?")
-        module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Beta+1"), 0.0, "Beta.imag == 0.0f ?")
-        module.addInst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Beta == 0 ?")
-        module.addInst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if beta == 0")
-        module.addInst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
-      elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
-           kernel["ProblemType"]["ComputeDataType"].isHalf() or \
-           kernel["ProblemType"]["ComputeDataType"].isBFloat16():
-        module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Beta"), 0.0, "Beta == 0.0f ?")
-        module.addInst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
-      else: # int32
-        module.addInst("s_cmp_eq_u32", sgpr("Beta"), 0, "Beta == 0 ?")
-        module.addInst("s_cbranch_scc1 %s" % (endCheckLabel.getLabelName()), "branch if beta == 0")
+      module.addCode(sBranchIfZero("Beta", kernel["ProblemType"]["ComputeDataType"], tmpSgpr, laneSC, endCheckLabel, \
+                     kernel['WavefrontSize'], self.vcc))
 
       for idx in kernel["ProblemType"]["IndicesBatch"]:
         if not isPackedIndex(kernel,idx):
@@ -2151,29 +2131,8 @@ class KernelWriterAssembly(KernelWriter):
     module.addInst("s_cmp_eq_u32", sgpr(tmpSgpr), hex(0), "skip buffer deref is size of summation is 0")
     module.addInst("s_cbranch_scc1", endCheckLabel.getLabelName(), "skip buffer deref is size of summation is 0")
 
-    if kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
-      module.addInst("v_cmp_eq_f64", sgpr(tmpSgpr, laneSC), sgpr("Alpha", 2), 0.0, "Alpha.real == 0.0 ?")
-      module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha+2", 2), 0.0, "Alpha.imag == 0.0 ?")
-      module.addInst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Alpha == 0 ?")
-      module.addInst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if alpha == 0")
-      module.addInst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
-    elif kernel["ProblemType"]["ComputeDataType"].isDouble():
-      module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha == 0.0 ?")
-      module.addInst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if Alpha == 0")
-    elif kernel["ProblemType"]["ComputeDataType"].isSingleComplex():
-      module.addInst("v_cmp_eq_f32", sgpr(tmpSgpr, laneSC), sgpr("Alpha"), 0.0, "Alpha.real == 0.0f ?")
-      module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha+1"), 0.0, "Alpha.imag == 0.0f ?")
-      module.addInst(f"s_and_b{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), self.vcc, sgpr(tmpSgpr, laneSC), "Alpha == 0 ?")
-      module.addInst(f"s_cmp_eq_u{kernel['WavefrontSize']}", sgpr(tmpSgpr, laneSC), hex(0), "branch if alpha == 0")
-      module.addInst("s_cbranch_scc0 %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
-    elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
-         kernel["ProblemType"]["ComputeDataType"].isHalf() or \
-         kernel["ProblemType"]["ComputeDataType"].isBFloat16():
-      module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha == 0.0f ?")
-      module.addInst("s_cbranch_vccnz %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
-    else: # int32
-      module.addInst("s_cmp_eq_u32", sgpr("Alpha"), 0, "Alpha == 0 ?")
-      module.addInst("s_cbranch_scc1 %s" % (endCheckLabel.getLabelName()), "branch if alpha == 0")
+    module.addCode(sBranchIfZero("Alpha", kernel["ProblemType"]["ComputeDataType"], tmpSgpr, laneSC, endCheckLabel, \
+                                 kernel['WavefrontSize'], self.vcc))
 
     module.addInst("s_mul_i32", sgpr(tmpSgpr), sgpr(Batch), 0x8, "offset of global buffer address")
     for idx in kernel["ProblemType"]["IndicesBatch"]:

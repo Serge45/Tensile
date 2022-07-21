@@ -316,6 +316,36 @@ def scalarStaticMultiply(product, operand, multiplier, tmpSgpr=None, comment="")
         # notice that the src-order of s_lshl_b64 is different from v_lshlrev_b32.
         return Inst("s_lshl_b64", product, operand, hex(multiplier_log2), comment)
 
+def sBranchIfZero(sgprName, computeDataType, tmpSgpr, laneSC, label, waveFrontSize, vcc):
+    module = Module("sBranchIfZero")
+    sgprStr = "s[{}]".format(sgprName)
+    if computeDataType.isDoubleComplex():
+        module.addInst("v_cmp_eq_f64", sgpr(tmpSgpr, laneSC), sgpr(sgprName, 2), 0.0, "%s.real == 0.0 ?" % sgprStr)
+        sgprVar = "%s+2" % sgprName if isinstance(sgprName, str) else sgprName + 2
+        module.addInst("v_cmp_eq_f64", vcc, sgpr(sgprVar, 2), 0.0, "%s.imag == 0.0 ?" % sgprStr)
+        module.addInst(f"s_and_b{waveFrontSize}", sgpr(tmpSgpr, laneSC), vcc, sgpr(tmpSgpr, laneSC), "%s == 0 ?" % sgprStr)
+        module.addInst(f"s_cmp_eq_u{waveFrontSize}", sgpr(tmpSgpr, laneSC), hex(0), "branch if %s == 0" % sgprStr)
+        module.addInst("s_cbranch_scc0 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+    elif computeDataType.isDouble():
+        module.addInst("v_cmp_eq_f64", vcc, sgpr(sgprName, 2), 0.0, "%s == 0.0 ?" % sgprStr)
+        module.addInst("s_cbranch_vccnz %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+    elif computeDataType.isSingleComplex():
+        module.addInst("v_cmp_eq_f32", sgpr(tmpSgpr, laneSC), sgpr(sgprName), 0.0, "%s.real == 0.0f ?" % sgprStr)
+        sgprVar = "%s+1" % sgprName if isinstance(sgprName, str) else sgprName + 1
+        module.addInst("v_cmp_eq_f32", vcc, sgpr(sgprVar), 0.0, "%s.imag == 0.0f ?" % sgprStr)
+        module.addInst(f"s_and_b{waveFrontSize}", sgpr(tmpSgpr, laneSC), vcc, sgpr(tmpSgpr, laneSC), "%s == 0 ?" % sgprStr)
+        module.addInst(f"s_cmp_eq_u{waveFrontSize}", sgpr(tmpSgpr, laneSC), hex(0), "branch if %s == 0" % sgprStr)
+        module.addInst("s_cbranch_scc0 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+    elif computeDataType.isSingle() or computeDataType.isHalf() or computeDataType.isBFloat16():
+        module.addInst("v_cmp_eq_f32", vcc, sgpr(sgprName), 0.0, "%s == 0.0f ?" % sgprStr)
+        module.addInst("s_cbranch_vccnz %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+    elif computeDataType.isInt32(): # int32
+        module.addInst("s_cmp_eq_u32", sgpr(sgprName), 0, "%s == 0 ?" % sgprStr)
+        module.addInst("s_cbranch_scc1 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+    else:
+      printExit("Unsupported compute data type: %s" % str(computeDataType))
+    return module
+
 ########################################
 # Saturate Cast Integer
 ########################################
