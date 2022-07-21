@@ -35,7 +35,7 @@ from .AsmUtils import vgpr, sgpr, log2, s_mul_int_64_32, \
                       scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, sBranchIfZero, \
                       replacePlaceHolder, \
                       SaturateCastType, LabelManager
-from .Activation import ActivationModule, ActivationType, RemoveDuplicateAssignment
+from .Activation import ActivationModule, ActivationType
 
 from math import ceil, log
 from copy import deepcopy
@@ -9243,7 +9243,6 @@ class KernelWriterAssembly(KernelWriter):
               activationModule.addCode(activation.assignGpr(actModule, tmpVgpr, tmpSgpr))
             activation.setSaturationForInt8(False)
             activation.setVgprPrefixFormat("")
-          RemoveDuplicateAssignment(activationModule)
 
           # pack stores, beta and non-beta reach here:
           packModule = Code.Module("Empty pack module")

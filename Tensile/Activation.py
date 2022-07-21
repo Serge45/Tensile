@@ -547,12 +547,6 @@ def CombineInstructions(module, fuseDebug = False):
     module = RemoveEmptyBlocks(module)
     return module
 
-# Public
-def RemoveDuplicateAssignment(module):
-    gprAssignValue = dict()
-    RemoveDuplicateAssignmentIter(module, gprAssignValue)
-    RemoveEmptyBlocks(module)
-
 # Does not support modules with branches
 def CombineInstructionsBetweenModules(module, moduleAndIndex, fuseDebug):
     index = 0
@@ -749,22 +743,6 @@ def removeOldInst(removeInst, dstInst, fusedInst, debug):
             break
     if targetIdx > -1:
         module.removeItemByIndex(targetIdx)
-
-# Currently only removes s_mov_b32
-def RemoveDuplicateAssignmentIter(module, gprAssignValue):
-    for itemIdx, item in enumerate(module.items()):
-        if isinstance(item, Module):
-            RemoveDuplicateAssignmentIter(item, gprAssignValue)
-        elif isinstance(item, Inst):
-            if item.inst == "s_mov_b32":
-                gpr      = item.params[0]
-                gprValue = item.params[1]
-                if gpr in gprAssignValue:
-                    if gprValue == gprAssignValue[gpr]:
-                        tb = TextBlock("\n/* duplicated */\n")
-                        tb.name = __DEUPLICATE_MAGIC_NAME__
-                        module.items()[itemIdx] = tb
-                gprAssignValue[gpr] = gprValue
 
 ################################################################################
 ################################################################################

@@ -20,6 +20,7 @@
 ################################################################################
 
 from . import Code
+from . import CodePass
 from . import Common
 from .AsmUtils import replacePlaceHolder
 from .Common import globalParameters, CHeader, roundUp, Backup, print2, printExit
@@ -2824,7 +2825,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
 
     error = self.overflowedResources
     # function signature last since it needs to know how many gprs were actually used
-    moduleKernelBody.addCode(self.functionSignature(kernel))
+    fs = self.functionSignature(kernel)
+    assignDict = CodePass.GetAssignmentDict(fs)
+    CodePass.RemoveDuplicateAssignment(module, assignDict)
+    moduleKernelBody.addCode(fs)
     moduleKernelBody.addCode(module)
     return (error, str(moduleKernelBody))
 
