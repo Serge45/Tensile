@@ -21,7 +21,7 @@
 
 from math import log
 from enum import Enum
-from .Code import Module, Inst, Item
+from .Code import HolderContainer, RegisterContainer, Module, Inst, Item
 from .Common import printExit
 import random
 import string
@@ -33,23 +33,22 @@ import string
 def gpr(*args):
     gprType = args[0]
     args = args[1]
+    if isinstance(args[0], Holder):
+        idx = args[0].idx
+        if len(args) == 1:
+            return HolderContainer(gprType, idx, 1)
+        elif len(args) == 2:
+            return HolderContainer(gprType, idx, args[1])
     if isinstance(args[0], int):
         if len(args) == 1:
-            return "%s%u"%(gprType, args[0])
+            return RegisterContainer(gprType, None, args[0], 1)
         elif len(args) == 2:
-            if args[1] == 1:
-                return "%s%u"%(gprType, args[0])
-            else:
-                return "%s[%u:%u]"%(gprType, args[0], args[0]+args[1]-1)
+            return RegisterContainer(gprType, None, args[0], args[1])
     if isinstance(args[0], str):
         if len(args) == 1:
-            return "%s[%sgpr%s]"%(gprType, gprType, args[0])
+            return RegisterContainer(gprType, args[0], None, 1)
         elif len(args) == 2:
-            if args[1] == 1:
-                return "%s[%sgpr%s]"%(gprType, gprType, args[0])
-            else:
-                return "%s[%sgpr%s:%sgpr%s+%u]"%(gprType, gprType, args[0], \
-                        gprType, args[0], args[1]-1)
+            return RegisterContainer(gprType, args[0], None, args[1])
 
 def vgpr(*args):
     return gpr("v", args)
@@ -59,6 +58,13 @@ def sgpr(*args):
 
 def accvgpr(*args):
     return gpr("acc", args)
+
+def mgpr(*args):
+    return gpr("m", args)
+
+class Holder:
+    def __init__(self, idx):
+        self.idx = idx
 
 ########################################
 # Log 2
@@ -197,9 +203,9 @@ def scalarStaticDivideAndRemainder(qReg, rReg, dReg, divisor, tmpSgpr, \
     assert (qReg != tmpSgpr)
 
 
-    qRegSgpr = qReg if type(qReg) == str and qReg.startswith("s[") else sgpr(qReg)
+    qRegSgpr = qReg if isinstance(qReg, RegisterContainer) and qReg.regType == 's' else sgpr(qReg)
 
-    dRegSgpr = dReg if type(dReg) == str and dReg.startswith("s[") else sgpr(dReg)
+    dRegSgpr = dReg if isinstance(dReg, RegisterContainer) and dReg.regType == 's' else sgpr(dReg)
 
     module = Module("scalarStaticDivideAndRemainder")
     if ((divisor & (divisor - 1)) == 0): # pow of 2
@@ -386,8 +392,8 @@ def replacePlaceHolder(module, srcStr, dstStr):
         for item in module.items():
             replacePlaceHolder(item, srcStr, dstStr)
     elif isinstance(module, Inst):
-        for paramIdx, param in enumerate(module.params):
-            module.params[paramIdx] = param.replace(srcStr, dstStr)
+        for param in module.params:
+            param.replaceRegName(srcStr, dstStr)
     return module
 
 ########################################

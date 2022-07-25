@@ -23,8 +23,71 @@ from __future__ import print_function
 from .Common import globalParameters, printExit
 from copy import deepcopy
 import ctypes
+import math
+
 # Global to print module names around strings
 printModuleNames = 0
+
+class RegisterContainer:
+  def __init__(self, regType, regName, regIdx, regNum) -> None:
+    self.regType = regType
+    self.regIdx = regIdx
+    self.regNum = int(math.ceil(regNum))
+    self.regName = regName
+
+    self.isInlineAsm = False
+
+  def setInlineAsm(self, setting):
+    self.isInlineAsm = setting
+
+  def replaceRegName(self, srcName, dstName):
+    if self.regName:
+      self.regName = self.regName.replace(srcName, dstName)
+
+  def getRegNameWithType(self):
+    assert(self.regName)
+    return "%sgpr%s" % (self.regType, self.regName)
+
+  def __eq__(self, o) -> bool:
+    if not isinstance(o, RegisterContainer):
+      return False
+    isSame = (self.regName == o.regName) if (self.regIdx == None) else (self.regIdx == o.regIdx)
+    return (self.regType == o.regType) and isSame and (self.regNum == o.regNum)
+
+  def __key(self) -> tuple:
+    return (self.regType, self.regIdx, self.regNum, self.regName)
+
+  def __hash__(self) -> hash:
+    return hash(self.__key())
+
+  def __str__(self) -> str:
+    if self.isInlineAsm:
+      assert(self.regName == None)
+      return "%%%d" % (self.regIdx)
+
+    if self.regName:
+      if self.regNum == 1:
+        return "%s[%sgpr%s]"%(self.regType, self.regType, self.regName)
+      else:
+        return "%s[%sgpr%s:%sgpr%s+%u]"%(self.regType, self.regType, self.regName, \
+                self.regType, self.regName, self.regNum-1)
+    else:
+      if self.regNum == 1:
+        return "%s%u" % (self.regType, self.regIdx)
+      else:
+        return "%s[%u:%u]" % (self.regType, self.regIdx, self.regIdx+self.regNum-1)
+
+class HolderContainer(RegisterContainer):
+  def __init__(self, regType, holderIdx, regNum) -> None:
+    super().__init__(regType, None, None, regNum)
+    self.holderIdx = holderIdx
+
+  def setRegIdx(self, idx):
+    self.regIdx = self.holderIdx + idx
+
+  def getCopiedRC(self):
+    assert(self.regIdx != None)
+    return RegisterContainer(self.regType, self.regName, self.regIdx, self.regNum)
 
 def slash(comment):
   """

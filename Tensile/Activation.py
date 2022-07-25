@@ -27,9 +27,9 @@ import struct
 from collections import OrderedDict
 
 from .AsmRegisterPool import RegisterPool
-from .AsmUtils import vgpr, sgpr
+from .AsmUtils import vgpr, sgpr, Holder
 from .Common import printExit, printWarning
-from .Code import Module, Inst, TextBlock
+from .Code import HolderContainer, RegisterContainer, Module, Inst, TextBlock
 
 ################################################################################
 # How to add an activation
@@ -248,12 +248,8 @@ class ActivationModule:
     def assignGpr(self, module, vgprIdx, sgprIdx):
         patternPrefix = ["v", "s"]
         gprIdx = [vgprIdx, sgprIdx]
-        funcs = [vgpr, sgpr]
-        for idx, func in enumerate(funcs):
-            pf = patternPrefix[idx]
-            patterns = [re.compile("%s\[%sgpr__holder[0-9]+__\]"%(pf, pf)),
-                       re.compile("%s\[%sgpr__holder[0-9]+__:%sgpr__holder[0-9]+__\+[0-9]+\]"%(pf, pf, pf))]
-            module = HolderToGpr(module, gprIdx[idx], patterns, func)
+        for idx, pf in enumerate(patternPrefix):
+            module = HolderToGpr(module, gprIdx[idx], pf)
         return module
 
     def setUsePK(self, usePK):
@@ -318,13 +314,13 @@ class ActivationModule:
             module.addInst("v_and_b32", self.vgprPrefix(vgprIdx+1), "0x7fffffff", self.vgprPrefix(vgprIdx+1), "Remove sign bit")
         elif cDataType.isInt32():
             vgprTemp = self.getVgpr(1)
-            module.addInst("v_sub_i32", vgpr(holder(vgprTemp)), 0, self.vgprPrefix(vgprIdx), "x2 = -x")
+            module.addInst("v_sub_i32", vgpr(Holder(vgprTemp)), 0, self.vgprPrefix(vgprIdx), "x2 = -x")
             if self.saturateI8:
                 vgprTemp2 = self.getVgpr(1)
-                module.addInst("v_mov_b32", vgpr(holder(vgprTemp2)), hex(127), "value = 127")
-                module.addInst("v_med3_i32", self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), vgpr(holder(vgprTemp2)), "y = min(127, max(x, x2))" )
+                module.addInst("v_mov_b32", vgpr(Holder(vgprTemp2)), hex(127), "value = 127")
+                module.addInst("v_med3_i32", self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), vgpr(Holder(vgprTemp2)), "y = min(127, max(x, x2))" )
             else:
-                module.addInst("v_sub_i32", self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), "y = max(x, x2)")
+                module.addInst("v_sub_i32", self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), "y = max(x, x2)")
         else:
             raise RuntimeError("Unsupported data type %s."%cDataType.toDevice("HIP"))
         return module
@@ -361,15 +357,15 @@ class ActivationModule:
         module = Module("Exp")
         if cDataType.isHalf():
             sgprMagic = self.getSgpr(1)
-            module.addInst("s_mov_b32", sgpr(holder(sgprMagic)), math.log(math.e,2), "exp magic" )
+            module.addInst("s_mov_b32", sgpr(Holder(sgprMagic)), math.log(math.e,2), "exp magic" )
             if self.usePK:
-                module.addInst("v_pk_mul_f16", self.vgprPrefix(vgprIdx), sgpr(holder(sgprMagic)), self.vgprPrefix(vgprIdx), "exp step 1")
+                module.addInst("v_pk_mul_f16", self.vgprPrefix(vgprIdx), sgpr(Holder(sgprMagic)), self.vgprPrefix(vgprIdx), "exp step 1")
                 for i in range(0, 2):
                     vgprCtrl = "dst_sel:WORD_%d dst_unused:UNUSED_PRESERVE src0_sel:WORD_%d"%(i, i)
                     module.addInst("v_exp_f16", self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), vgprCtrl, "exp step 2")
                     module.addInst("s_nop", 0, "1 wait state") #workaround for emulator
             else:
-                module.addInst("v_mul_f16", self.vgprPrefix(vgprIdx), sgpr(holder(sgprMagic)), self.vgprPrefix(vgprIdx), "exp step 1")
+                module.addInst("v_mul_f16", self.vgprPrefix(vgprIdx), sgpr(Holder(sgprMagic)), self.vgprPrefix(vgprIdx), "exp step 1")
                 module.addInst("v_exp_f16", self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), "exp step 2")
                 module.addInst("s_nop", 0, "1 wait state") #workaround for emulator
         elif cDataType.isSingle():
@@ -387,31 +383,31 @@ class ActivationModule:
             pkStr = "_pk" if self.usePK else ""
             flt16GeluK1Str = HexToStr(cDataType, self.usePK, ActivationMagicNumbers["Float16GeluK1"])
             sgprMagicK1 = self.getSgpr(1)
-            module.addInst("s_mov_b32", sgpr(holder(sgprMagicK1)), flt16GeluK1Str, "Float16GeluK1" )
+            module.addInst("s_mov_b32", sgpr(Holder(sgprMagicK1)), flt16GeluK1Str, "Float16GeluK1" )
             vgprTemp = self.getVgpr(1)
-            module.addInst("v%s_mul_f16"%pkStr, vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), "x * x" )
+            module.addInst("v%s_mul_f16"%pkStr, vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), "x * x" )
             vgprCtrl = "op_sel_hi:[1,1,0,1]" if self.usePK else ""
-            module.addInst("v%s_fma_f16"%pkStr, vgpr(holder(vgprTemp)), vgpr(holder(vgprTemp)), sgpr(holder(sgprMagicK1)), 1.0, vgprCtrl, "x^2 * k1 + 1")
-            module.addInst("v%s_mul_f16"%pkStr, vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), "x * (x^2 * k1 + 1)")
+            module.addInst("v%s_fma_f16"%pkStr, vgpr(Holder(vgprTemp)), vgpr(Holder(vgprTemp)), sgpr(Holder(sgprMagicK1)), 1.0, vgprCtrl, "x^2 * k1 + 1")
+            module.addInst("v%s_mul_f16"%pkStr, vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), "x * (x^2 * k1 + 1)")
             coef = floatUnion(u=ActivationMagicNumbers["FloatGeluK0"])
-            module.addInst("v%s_mul_f16"%pkStr, vgpr(holder(vgprTemp)), coef.f, vgpr(holder(vgprTemp)), "k0 * x * (x^2 * k1 + 1)")
-            module.addCode(self.getTanhModule(cDataType, holder(vgprTemp), "", ""))
+            module.addInst("v%s_mul_f16"%pkStr, vgpr(Holder(vgprTemp)), coef.f, vgpr(Holder(vgprTemp)), "k0 * x * (x^2 * k1 + 1)")
+            module.addCode(self.getTanhModule(cDataType, Holder(vgprTemp), "", ""))
             vgprCtrl = "op_sel_hi:[0,1,1]" if self.usePK else ""
-            module.addInst("v%s_add_f16"%pkStr, vgpr(holder(vgprTemp)), 1.0, vgpr(holder(vgprTemp)), vgprCtrl, "1 + tanh(...)" )
-            module.addInst("v%s_mul_f16"%pkStr, vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), "x * (1 + tanh(...))")
-            module.addInst("v%s_mul_f16"%pkStr, self.vgprPrefix(vgprIdx), 0.5, vgpr(holder(vgprTemp)), vgprCtrl, "0.5 * x * (1 + tanh(...))")
+            module.addInst("v%s_add_f16"%pkStr, vgpr(Holder(vgprTemp)), 1.0, vgpr(Holder(vgprTemp)), vgprCtrl, "1 + tanh(...)" )
+            module.addInst("v%s_mul_f16"%pkStr, vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), "x * (1 + tanh(...))")
+            module.addInst("v%s_mul_f16"%pkStr, self.vgprPrefix(vgprIdx), 0.5, vgpr(Holder(vgprTemp)), vgprCtrl, "0.5 * x * (1 + tanh(...))")
         elif cDataType.isSingle():
             vgprTemp = self.getVgpr(1)
             flt16GeluK1Str = HexToStr(cDataType, self.usePK, ActivationMagicNumbers["FloatGeluK1"])
-            module.addInst("v_mul_f32", vgpr(holder(vgprTemp)), flt16GeluK1Str, self.vgprPrefix(vgprIdx), "k1 * x")
-            module.addInst("v_fma_f32", vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), 1.0, "1 + (k1 * x * x)")
-            module.addInst("v_mul_f32", vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), "x * (1 + k1 * x * x)")
+            module.addInst("v_mul_f32", vgpr(Holder(vgprTemp)), flt16GeluK1Str, self.vgprPrefix(vgprIdx), "k1 * x")
+            module.addInst("v_fma_f32", vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), 1.0, "1 + (k1 * x * x)")
+            module.addInst("v_mul_f32", vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), "x * (1 + k1 * x * x)")
             coef = floatUnion(u=ActivationMagicNumbers["FloatGeluK0"])
-            module.addInst("v_mul_f32", vgpr(holder(vgprTemp)), coef.f, vgpr(holder(vgprTemp)), "k0 * x * (x^2 * k1 + 1)")
-            module.addCode(self.getTanhModule(cDataType, holder(vgprTemp), "", ""))
-            module.addInst("v_add_f32", vgpr(holder(vgprTemp)), 1.0, vgpr(holder(vgprTemp)), "1 + tanh(...)" )
-            module.addInst("v_mul_f32", vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), "x * (1 + tanh(...))")
-            module.addInst("v_mul_f32", self.vgprPrefix(vgprIdx), 0.5, vgpr(holder(vgprTemp)), "0.5 * x * (1 + tanh(...))")
+            module.addInst("v_mul_f32", vgpr(Holder(vgprTemp)), coef.f, vgpr(Holder(vgprTemp)), "k0 * x * (x^2 * k1 + 1)")
+            module.addCode(self.getTanhModule(cDataType, Holder(vgprTemp), "", ""))
+            module.addInst("v_add_f32", vgpr(Holder(vgprTemp)), 1.0, vgpr(Holder(vgprTemp)), "1 + tanh(...)" )
+            module.addInst("v_mul_f32", vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), "x * (1 + tanh(...))")
+            module.addInst("v_mul_f32", self.vgprPrefix(vgprIdx), 0.5, vgpr(Holder(vgprTemp)), "0.5 * x * (1 + tanh(...))")
         else:
             raise RuntimeError("Unsupported data type %s."%cDataType.toDevice("HIP"))
         return module
@@ -420,28 +416,28 @@ class ActivationModule:
         module = Module("LeakyRelu")
         if cDataType.isHalf():
             vgprTemp = self.getVgpr(1)
-            module.addInst("v_pk_mul_f16", vgpr(holder(vgprTemp)), sgpr(activationAlpha), self.vgprPrefix(vgprIdx), "tmp = x * alpha")
+            module.addInst("v_pk_mul_f16", vgpr(Holder(vgprTemp)), sgpr(activationAlpha), self.vgprPrefix(vgprIdx), "tmp = x * alpha")
             for i in range(0, 2):
                 module.addInst("v_cmp_ge_f16", self.vcc, self.vgprPrefix(vgprIdx), 0.0, "src0_sel:WORD_%d"%i, "src1_sel:WORD_0", "x > 0 ?")
-                module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx),
+                module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx),
                                self.vcc, "dst_sel:WORD_%d"%i, "dst_unused:UNUSED_PRESERVE", "src0_sel:WORD_%d"%i, "src1_sel:WORD_%d"%i,
                                "set x to tmp if < 0")
         elif cDataType.isSingle():
             vgprTemp = self.getVgpr(1)
-            module.addInst("v_mul_f32", vgpr(holder(vgprTemp)), sgpr(activationAlpha), self.vgprPrefix(vgprIdx), "tmp = x * alpha")
+            module.addInst("v_mul_f32", vgpr(Holder(vgprTemp)), sgpr(activationAlpha), self.vgprPrefix(vgprIdx), "tmp = x * alpha")
             module.addInst("v_cmp_ge_f32", self.vcc, self.vgprPrefix(vgprIdx), 0.0, "x >= 0 ?")
-            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vcc, "set x to tmp if < 0")
+            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vcc, "set x to tmp if < 0")
         elif cDataType.isDouble():
             vgprTemp = self.getVgpr(2)
-            module.addInst("v_mul_f64", vgpr(holder(vgprTemp), 2), sgpr(activationAlpha, 2), self.vgprPrefix(vgprIdx, 2), "tmp = x * alpha")
+            module.addInst("v_mul_f64", vgpr(Holder(vgprTemp), 2), sgpr(activationAlpha, 2), self.vgprPrefix(vgprIdx, 2), "tmp = x * alpha")
             module.addInst("v_cmp_ge_f64", self.vcc, self.vgprPrefix(vgprIdx, 2), 0.0, "x >= 0 ?")
-            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vcc, "set x to tmp if < 0")
-            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx+1), vgpr(holder(vgprTemp+1)), self.vgprPrefix(vgprIdx+1), self.vcc, "set x to tmp if < 0")
+            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vcc, "set x to tmp if < 0")
+            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx+1), vgpr(Holder(vgprTemp+1)), self.vgprPrefix(vgprIdx+1), self.vcc, "set x to tmp if < 0")
         elif cDataType.isInt32():
             vgprTemp = self.getVgpr(1)
-            module.addInst("v_mul_lo_u32", vgpr(holder(vgprTemp)), sgpr(activationAlpha), self.vgprPrefix(vgprIdx), "tmp = x * alpha")
+            module.addInst("v_mul_lo_u32", vgpr(Holder(vgprTemp)), sgpr(activationAlpha), self.vgprPrefix(vgprIdx), "tmp = x * alpha")
             module.addInst("v_cmp_ge_i32", self.vcc, self.vgprPrefix(vgprIdx), 0, "x >= 0 ?")
-            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vcc, "set x to tmp if < 0")
+            module.addInst("v_cndmask_b32", self.vgprPrefix(vgprIdx), vgpr(Holder(vgprTemp)), self.vgprPrefix(vgprIdx), self.vcc, "set x to tmp if < 0")
         else:
             raise RuntimeError("Unsupported data type %s."%cDataType.toDevice("HIP"))
         return module
@@ -457,8 +453,8 @@ class ActivationModule:
         elif cDataType.isInt32():
             if self.saturateI8:
                 vgprTemp = self.getVgpr(1)
-                module.addInst("v_mov_b32", vgpr(holder(vgprTemp)), hex(127), "value = 127")
-                module.addInst("v_med3_i32", self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), 0, vgpr(holder(vgprTemp)), "x = min(127, max(0, x))" )
+                module.addInst("v_mov_b32", vgpr(Holder(vgprTemp)), hex(127), "value = 127")
+                module.addInst("v_med3_i32", self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), 0, vgpr(Holder(vgprTemp)), "x = min(127, max(0, x))" )
             else:
                 module.addInst("v_max_i32", self.vgprPrefix(vgprIdx), self.vgprPrefix(vgprIdx), 0, "x = max(0, x)" )
         else:
@@ -560,9 +556,9 @@ def CombineInstructionsBetweenModules(module, moduleAndIndex, fuseDebug):
                 FuseInstruction(item, moduleAndIndex, fuseDebug)
                 index = module.items().index(item)
             outGpr = item.params[0] if len(item.params) > 0 else ""
-            if outGpr:
+            if isinstance(outGpr, RegisterContainer):
                 # Update the dict
-                moduleAndIndex[outGpr] = [module, item]
+                moduleAndIndex[outGpr] = item
         index += 1
 
 def RemoveEmptyBlocks(module):
@@ -582,7 +578,7 @@ def FuseInstruction(currentInst, moduleAndIndex, fuseDebug):
     # Currently, we only fuse when the vgpr is add by 1 in both instructions.
     # ex. v_add_f16 v0, 1.0, v0
     #     +  v_fma_f16 v0, -2.0, v0, 1.0
-    #     => v_fma_f16 vv0, -2.0, v0, 2.0
+    #     => v_fma_f16 v0, -2.0, v0, 2.0
     if re.match(r"v[_pk]*_add_", currentInst.inst):
         outVgpr = currentInst.params[0]
         addConst = ""
@@ -595,20 +591,18 @@ def FuseInstruction(currentInst, moduleAndIndex, fuseDebug):
                     addConst = param
 
         if isSelfAddConst and addConst:
-            for _, [_, oldInst] in moduleAndIndex.items():
-                if isinstance(oldInst, Inst):
-                    oldOutVgpr = oldInst.params[0] if len(oldInst.params) > 0 else ""
-                    if re.match(r"v[_pk]*_fma_", oldInst.inst) and oldOutVgpr == outVgpr and oldInst.params[3] == 1.0:
-                        # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
-                        # used before the current instruction
-                        if FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
-                            break
+            oldInst = moduleAndIndex.get(outVgpr)
+            if isinstance(oldInst, Inst):
+                oldOutVgpr = oldInst.params[0] if len(oldInst.params) > 0 else ""
+                if re.match(r"v[_pk]*_fma_", oldInst.inst) and oldInst.params[3] == 1.0:
+                    # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
+                    # used before the current instruction
+                    if not FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
                         newInst = deepcopy(oldInst)
                         newInst.params[3] = addConst + newInst.params[3]
                         newInst.comment += " ( + 1 (fused))"
                         currentInst.copy(newInst)
                         removeOldInst(oldInst, backInst, currentInst, fuseDebug)
-                        break
     # Fuses if v_mul_f16 to v_mul_f16 if the later one is a self multiplying instruction.
     # Only fuses when both instructions multiply constant
     elif re.match(r"v[_pk]*_mul_", currentInst.inst):
@@ -620,29 +614,27 @@ def FuseInstruction(currentInst, moduleAndIndex, fuseDebug):
             if param == outVgpr:
                 isSelfMulConst = True
             # The constant may be an sgpr
-            if (isinstance(param, str) and re.match(r"^s", param)):
-                for _, [_, oldInst] in moduleAndIndex.items():
+            if isinstance(param, RegisterContainer) and param.regType == 's':
+                oldInst = moduleAndIndex.get(param)
+                if isinstance(oldInst, Inst):
                     oldparam = oldInst.params[1]
-                    if isinstance(oldInst, Inst) and oldInst.inst == "s_mov_b32" and \
+                    if oldInst.inst == "s_mov_b32" and \
                         oldInst.params[0] == param and (isinstance(oldparam, float) or isinstance(oldparam, int)):
                         # Cannot fuse if another instruction is using the same sgpr before a new assignment occurs
-                        if FindUse(oldInst, currentInst, param):
-                            break
-                        mulConst = oldparam
-                        newFuseInst = oldInst
-                        break
+                        if not FindUse(oldInst, currentInst, param):
+                            mulConst = oldparam
+                            newFuseInst = oldInst
             if (isinstance(param, float) or isinstance(param, int)):
                 mulConst = param
 
         if isSelfMulConst and mulConst:
-            for _, [_, oldInst] in moduleAndIndex.items():
-                if isinstance(oldInst, Inst):
-                    oldOutVgpr = oldInst.params[0] if len(oldInst.params) > 0 else ""
-                    if re.match(r"v[_pk]*_mul_", oldInst.inst) and oldOutVgpr == outVgpr:
-                        # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
-                        # used before the current instruction
-                        if FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
-                            break
+            oldInst = moduleAndIndex.get(outVgpr)
+            if isinstance(oldInst, Inst):
+                oldOutVgpr = oldInst.params[0] if len(oldInst.params) > 0 else ""
+                if re.match(r"v[_pk]*_mul_", oldInst.inst):
+                    # Cannot fuse if the target instruction has any rvalue reassigned or its lvalue
+                    # used before the current instruction
+                    if not FindAssignAndUse(oldInst, currentInst, outVgpr, outVgpr):
                         for paramIdx, param in enumerate(oldInst.params[1:]):
                             if (isinstance(param, float) or isinstance(param, int)):
                                 newInst = deepcopy(oldInst)
@@ -659,11 +651,12 @@ def FuseInstruction(currentInst, moduleAndIndex, fuseDebug):
                                 removeOldInst(oldInst, backInst, currentInst, fuseDebug)
                                 break
 
-
+# This only works for Activation.py
 def FindUse(startInst, targetInst, varTarget):
     _, isUse = FindUseIter(startInst, targetInst, varTarget)
     return isUse
 
+# This only works for Activation.py
 def FindUseIter(startItem, targetInst, varTarget):
     module = startItem
     idx = -1
@@ -693,17 +686,17 @@ def FindUseIter(startItem, targetInst, varTarget):
                 return isEnd, isUse
     return False, isUse
 
-def FindAssignAndUse(startInst, endInst, assignVarTargets, useVarTargets):
-    usedTargets, assignedTargets = FindAssignAndUseIter(startInst, endInst, assignVarTargets, useVarTargets)
-    if len(usedTargets) > 0 or len(assignedTargets) > 0:
-        return True
-    return False
+# This only works for Activation.py
+def FindAssignAndUse(startInst, endInst, assignVar, useVar):
+    _, isUse = FindAssignAndUseIter(startInst, endInst, assignVar, useVar)
+    return isUse
 
-def FindAssignAndUseIter(startItem, endInst, assignVarTargets, useVarTargets):
+# This only works for Activation.py
+def FindAssignAndUseIter(startItem, endInst, assignVar, useVar):
     module = startItem
     idx = -1
-    usedTargets = set()
-    assignedTargets = set()
+    isEnd = False
+    isUse = False
     if isinstance(startItem, Inst):
         module = startItem.parent
         idx = module.items().index(startItem)
@@ -712,22 +705,23 @@ def FindAssignAndUseIter(startItem, endInst, assignVarTargets, useVarTargets):
         for item in module.items()[idx + 1:]:
             # Use
             if item is endInst:
-                break
+                isEnd = True
             elif isinstance(item, Inst) and (len(item.params) > 0):
-                for assignVar in assignVarTargets:
-                    if item.params[0] == assignVar:
-                        assignedTargets.add(assignVar)
+                if item.params[0] == assignVar:
+                    isEnd = True
+                    isUse = True
                 # Check use
                 if len(item.params) > 1:
                     for param in item.params[1:]:
-                        for useVar in useVarTargets:
-                            if param == useVar:
-                                usedTargets.add(useVar)
+                        if param == useVar:
+                            isEnd = True
+                            isUse = True
+                            break
             elif isinstance(item, Module):
-                childUsedTargets, childAssignedTargets = FindAssignAndUseIter(item, endInst, assignVarTargets, useVarTargets)
-                usedTargets = usedTargets.union(childUsedTargets)
-                assignedTargets = assignedTargets.union(childAssignedTargets)
-    return usedTargets, assignedTargets
+                isEnd, isUse = FindAssignAndUseIter(item, endInst, assignVar, useVar)
+            if isEnd:
+                return isEnd, isUse
+    return isEnd, isUse
 
 def removeOldInst(removeInst, dstInst, fusedInst, debug):
     module = removeInst.parent
@@ -791,33 +785,16 @@ def ConvertCoeffToHex(module, cDataType, isPack):
             module.items()[itemIdx] = newItem
     return module
 
-def holder(num):
-    return "__holder%u__"%(num)
-
-def HolderToGpr(module, idx, patterns, gprFunc):
+def HolderToGpr(module, idx, pf):
     for itemIdx, item in enumerate(module.items()):
         if isinstance(item, Module):
-            newItem = HolderToGpr(item, idx, patterns, gprFunc)
+            newItem = HolderToGpr(item, idx, pf)
             module.items()[itemIdx] = newItem
         elif isinstance(item, Inst):
-            params = list(item.params)
-            for paramIdx, param in enumerate(params):
-                for pattern in patterns:
-                    if pattern.match(str(param)):
-                        patternValues = re.findall(r'\d+', param)
-                        if len(patternValues) == 3:
-                            value0 = int(patternValues[0])
-                            value1 = int(patternValues[1])
-                            value2 = int(patternValues[2]) + 1
-                            assert(value0 == value1)
-                            newIdx = value0+idx
-                            params[paramIdx] = gprFunc(newIdx, value2)
-                        else:
-                            value = int(patternValues[0])
-                            newIdx = value+idx
-                            params[paramIdx] = gprFunc(newIdx)
-                        item.params = tuple(params)
-                        break
+            for itemIdx, param in enumerate(item.params):
+                if isinstance(param, HolderContainer) and param.regType == pf:
+                    param.setRegIdx(idx)
+                    item.params[itemIdx] = param.getCopiedRC()
     return module
 
 def addSpace(alignStr, str):
@@ -867,11 +844,9 @@ class ActivationInline:
     for item in module.items():
         if isinstance(item, Inst):
             for idx, param in enumerate(item.params):
-                if isinstance(param, str):
-                    if re.match("s[0-9]+", param) or re.match("s[0-9]+:[0-9]+", param) or \
-                       re.match("v[0-9]+", param) or re.match("v[0-9]+:[0-9]+", param):
-                        patternValues = re.findall(r'\d+', param)
-                        item.params[idx] = "%%%d"%int(patternValues[0])
+                if isinstance(param, RegisterContainer):
+                    if not param.regName:
+                        param.setInlineAsm(True)
 
   def getActivationAsmStr(self, activation, module, spaces):
     module = activation.postProcess(self.dataType, module)

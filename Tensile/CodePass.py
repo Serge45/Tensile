@@ -74,10 +74,10 @@ def RemoveDuplicateAssignmentIter(module, assignmentDict, gprAssignValue):
             elif item.inst == "s_mov_b32":
                 gpr      = item.params[0]
                 gprValue = item.params[1]
-                gprList = setName2RegNum(gpr, assignmentDict)
-                if gprList[0] in gprAssignValue:
-                    if gprList[1][0] in gprAssignValue[gprList[0]]:
-                        if gprValue == gprAssignValue[gprList[0]][gprList[1][0]]:
+                setName2RegNum(gpr, assignmentDict)
+                if gpr.regType in gprAssignValue:
+                    if gpr.regIdx in gprAssignValue[gpr.regType]:
+                        if gprValue == gprAssignValue[gpr.regType][gpr.regIdx]:
                             if item.comment:
                                 item.inst = ""
                                 item.params = []
@@ -86,25 +86,25 @@ def RemoveDuplicateAssignmentIter(module, assignmentDict, gprAssignValue):
                                 module.removeItemByIndex(index)
                                 index -= 1
                 else:
-                    gprAssignValue[gprList[0]] = dict()
-                gprAssignValue[gprList[0]][gprList[1][0]] = gprValue
+                    gprAssignValue[gpr.regType] = dict()
+                gprAssignValue[gpr.regType][gpr.regIdx] = gprValue
             # These macros does not follow the pattern :(
             elif re.match(r'GLOBAL_OFFSET_', item.inst) or \
                  item.inst == "V_MAGIC_DIV" or \
                  item.inst == "DYNAMIC_VECTOR_DIVIDE": # Remove if global read use the register
                 m = re.findall(r'^(.+?)\+(\d+)', item.params[0])[0]
                 num = assignmentDict[m[0]] + int(m[1])
-                if ("V" in gprAssignValue) and \
-                    (num in gprAssignValue[gprList[0]]):
+                if ("v" in gprAssignValue) and \
+                    (num in gprAssignValue["v"]):
                     del gprAssignValue["v"][num]
             elif len(item.params) > 1:
                 gpr = item.params[0]
-                if isinstance(gpr, str) and (gpr != "vcc") and re.match(r"^[sv]", gpr):
+                if isinstance(gpr, Code.RegisterContainer):
                     gprList = setName2RegNum(gpr, assignmentDict)
-                    for gprIdx in gprList[1]:
-                        if (gprList[0] in gprAssignValue) and \
-                           (gprIdx in gprAssignValue[gprList[0]]): # Remove if anyone use the register
-                            del gprAssignValue[gprList[0]][gprIdx]
+                    if gpr.regType in gprAssignValue:
+                        for gprIdx in gprList:
+                            if gprIdx in gprAssignValue[gpr.regType]: # Remove if anyone use the register
+                                del gprAssignValue[gpr.regType][gprIdx]
         elif isinstance(item, Code.CompoundInst):
             if not isinstance(item, Code.WaitCnt):
                 printExit("Currently does not support any Item that is a Code.CompoundInst but \
@@ -123,32 +123,17 @@ def RemoveDuplicateAssignmentIter(module, assignmentDict, gprAssignValue):
 
 # Find ".set AAAAA 0" and convert "s[AAAAA]" into "s0"
 def setName2RegNum(gpr, assignmentDict):
-    RegNumList = []
-    m = re.findall(r'^[svm]\[(.+?):(.+?)\]', gpr)
-    if m:
-        m = list(m[0])
-        n1 = re.findall(r'^(.+?)(\+)*(\d+)*', m[0])
-        n2 = re.findall(r'^(.+?)\+(\d+)', m[1])
-        if n2:
-            n1 = list(n1[0])
-            n2 = list(n2[0])
-            num = assignmentDict[n2[0]]
-            assert(n1[0] in n2[0])
-            lower = int(n1[1]) if n1[1] else 0
-            RegNumList = [gpr[0], list(i for i in range(num + lower, num + int(n2[1]) + 1))]
-        else:
-            RegNumList = [gpr[0], list(i for i in range(int(m[0]), int(m[1]) + 1))]
-    else:
-        m = re.findall(r'^[svm]\[(.+?)(\+\d+)*\]', gpr)
+    assert(isinstance(gpr, Code.RegisterContainer))
+    if gpr.regIdx == None and gpr.regName:
+        name = gpr.getRegNameWithType()
+        m = re.findall(r'^(.+?)\+(\d+)', name)
         if m:
-            m = list(item for item in m[0] if item)
-            num = assignmentDict[m[0]]
-            if len(m) == 2:
-                bound = re.findall(r'\d+', m[1])[0]
-                RegNumList = [gpr[0], list(i for i in range(num, num + int(bound) + 1))]
-            else:
-                RegNumList = [gpr[0], [num]]
+            m = m[0]
+            num = assignmentDict[m[0]] + int(m[1])
         else:
-            m = re.findall(r'^[svm](\d+)', gpr)
-            RegNumList = [gpr[0], [int(m[0])]]
+            num = assignmentDict[name]
+        gpr.regIdx = num
+    RegNumList = []
+    for i in range(0, gpr.regNum):
+        RegNumList.append(i + gpr.regIdx)
     return RegNumList

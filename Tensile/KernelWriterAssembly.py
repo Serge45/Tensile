@@ -30,7 +30,7 @@ from .AsmRegisterPool import RegisterPool, SmartPoolContainer
 from .AsmStoreState import StoreState
 from .AsmAssert import Assert, bomb
 from .AsmMacros import InstMacros, macroRegister
-from .AsmUtils import vgpr, sgpr, log2, s_mul_int_64_32, \
+from .AsmUtils import vgpr, sgpr, accvgpr, mgpr, log2, s_mul_int_64_32, \
                       vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
                       scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, sBranchIfZero, \
                       replacePlaceHolder, \
@@ -339,6 +339,8 @@ class KernelWriterAssembly(KernelWriter):
           0, comment)
 
   def isConstUnitStride(self, stride):
+      if isinstance(stride, Code.RegisterContainer):
+        return False
       return stride.startswith("const")
 
   ########################################
@@ -2153,7 +2155,7 @@ class KernelWriterAssembly(KernelWriter):
         module.addSpaceLine()
 
       # set m0
-      module.addInst("s_mov_b32", "m0", hex(kernel["LdsNumElements"] \
+      module.addInst("s_mov_b32", mgpr(0), hex(kernel["LdsNumElements"] \
           * self.bpeAB), "LDS clamp at %u bytes" \
           %(kernel["LdsNumElements"] * self.bpeAB) )
 
@@ -4209,7 +4211,7 @@ class KernelWriterAssembly(KernelWriter):
 
     for i in range(startNumCVgpr, numCVgpr):
       copyInsStr = "v_mov_b32" if self.numVgprValuC else "v_accvgpr_write"
-      regStr = vgpr("ValuC+%u"%i) if self.numVgprValuC else "acc%u"%i
+      regStr = vgpr("ValuC+%u"%i) if self.numVgprValuC else accvgpr(i)
       if not kernel["LdsInitCVgprs"]:
         module.addInst(copyInsStr, regStr, hex(0), "initC")
       else:
@@ -5868,7 +5870,7 @@ class KernelWriterAssembly(KernelWriter):
                     # we have to increase m0 if offset is larger thant 12 bits
                     if instOffset >= self.buff_load_inst_offset_max:
                       inc = (instOffset // self.buff_load_inst_offset_max) * self.buff_load_inst_offset_max
-                      module.addInst("s_add_u32", "m0", "m0", inc, "Move LDS write address to next base" )
+                      module.addInst("s_add_u32", mgpr(0), mgpr(0), inc, "Move LDS write address to next base" )
                       instOffset -= inc
                   elif directToLdsLoads != 0 and ldsInc > 0:
                       if tP["nrc"] > 1:
@@ -5891,7 +5893,7 @@ class KernelWriterAssembly(KernelWriter):
                         ldsOffset = ldsInc * tP["nrc"] * (sPerp + tP["nrpv"] * perp) + lscaOffset
                         ldsInc = ldsOffset - prevLdsOffset
                         prevLdsOffset = ldsOffset
-                      module.addInst("s_add_u32", "m0", "m0", ldsInc, "Move LDS write address to next line" )
+                      module.addInst("s_add_u32", mgpr(0), mgpr(0), ldsInc, "Move LDS write address to next line" )
 
                   destVgpr=0
                 elif kernel["DirectToVgpr%s"%tc]:
@@ -6043,7 +6045,7 @@ class KernelWriterAssembly(KernelWriter):
 
     # TODO - can remove one of these m0 restores if A and B both TLU
     if kernel["DirectToLds%s"%tP["tensorChar"]]:
-      module.addInst("s_mov_b32", "m0", \
+      module.addInst("s_mov_b32", mgpr(0), \
           hex(kernel["LdsNumElements"] * tP["bpe"]), \
           "Restore LDS clamp at %u bytes"%(kernel["LdsNumElements"] * tP["bpe"]))
 
@@ -6068,10 +6070,10 @@ class KernelWriterAssembly(KernelWriter):
       # along with global reads
       assert (kernel["LocalWriteUseSgpr%s"%tc])
       if kernel["ExpandPointerSwap"]:
-        DtldsModule.addInst("s_add_u32", "m0", sgpr("LocalWriteAddr%s"%tc), \
+        DtldsModule.addInst("s_add_u32", mgpr(0), sgpr("LocalWriteAddr%s"%tc), \
                       tP["localWriteSwapByteOffset"], "m0 <- LDS write address")
       else:
-        DtldsModule.addInst("s_mov_b32", "m0", sgpr("LocalWriteAddr%s"%tc), "m0 <- LDS write address")
+        DtldsModule.addInst("s_mov_b32", mgpr(0), sgpr("LocalWriteAddr%s"%tc), "m0 <- LDS write address")
 
       # PrefetchGlobalRead=2 case, generate local read wait for DirectToLds
       if kernel["PrefetchGlobalRead"]==2:
@@ -6208,7 +6210,7 @@ class KernelWriterAssembly(KernelWriter):
                   # we have to increase m0 if offset is larger thant 12 bits
                   if instOffset >= self.buff_load_inst_offset_max:
                     inc = (instOffset // self.buff_load_inst_offset_max) * self.buff_load_inst_offset_max
-                    loadModule.addInst("s_add_u32", "m0", "m0", inc, "Move LDS write address to next base" )
+                    loadModule.addInst("s_add_u32", mgpr(0), mgpr(0), inc, "Move LDS write address to next base" )
                     instOffset -= inc
                 elif directToLdsLoads != 0:
                   # m0 offset conversion (only for UseInstOffsetForGRO == 0)
@@ -6233,7 +6235,7 @@ class KernelWriterAssembly(KernelWriter):
                     ldsOffset = ldsInc * tP["nrc"] * (sPerp + tP["nrpv"] * perp) + lscaOffset
                     ldsInc = ldsOffset - prevLdsOffset
                     prevLdsOffset = ldsOffset
-                  loadModule.addInst("s_add_u32", "m0", "m0", ldsInc, "Move LDS write address to next line" )
+                  loadModule.addInst("s_add_u32", mgpr(0), mgpr(0), ldsInc, "Move LDS write address to next line" )
                 directToLdsLoads+=1
                 destVgpr=0
               elif kernel["DirectToVgpr%s"%tc]:
@@ -6287,7 +6289,7 @@ class KernelWriterAssembly(KernelWriter):
     # TODO - can remove one of these m0 restores if A and B both TLU
     if kernel["DirectToLds%s"%tP["tensorChar"]] and not (mode == 1 and kernel["PrefetchGlobalRead"]==2):
       inst = "s_mov_b32"
-      dst = "m0"
+      dst = mgpr(0)
       src = hex(kernel["LdsNumElements"] * tP["bpe"])
       comment = "Restore LDS clamp at %u bytes"%(kernel["LdsNumElements"] * tP["bpe"])
       # PGR=2 case, footer is located before global read. To avoid setting clamp before global read, store lds clamp code in middle
@@ -9815,7 +9817,7 @@ class KernelWriterAssembly(KernelWriter):
           destIdx = (acc2arch[i]*complexMultiplier + cm) * kernel["MIRegPerOut"] + r
           srcIdx = ((i * kernel["MIRegPerOut"] + r) + (cm*accImOffset))
           if not kernel["MIArchVgpr"]:
-            accStr = "acc%u"%srcIdx
+            accStr = accvgpr(srcIdx)
             self.codeAccVgprRead.itemList[destIdx] = Code.Inst("v_accvgpr_read_b32",
                                                             vgpr("ValuC+__placeholder__"),
                                                             accStr, "copy acc to vreg[%u]" % destIdx)
