@@ -463,17 +463,6 @@ validParameters = {
     # GSUSARR=True means the 4 workgroups round robin split up the chunks of the summation: k=0 -> DU-1, 4DU -> 5DU-1, ...; k=1DU -> 2DU-1, 5DU -> 6DU-1...; ...
     "GlobalSplitUSummationAssignmentRoundRobin":  [ False, True ],
 
-    # not used yet; will refer to combining multiple reads into single instruction
-    # such as ds_read_b32 -> ds_read2_b32
-    # the pro is that it cuts in half the number of instructions
-    # the con is that bits per offset is half, so arithmatic might be required to increment and reset offset vgprs
-    "GlobalRead2A":               [ False, True ],
-    "GlobalRead2B":               [ False, True ],
-    "LocalWrite2A":               [ False, True ],
-    "LocalWrite2B":               [ False, True ],
-    "LocalRead2A":                [ False, True ],
-    "LocalRead2B":                [ False, True ],
-
     # don't create a whole copy of the Unroll loop with loads removed - instead
     # use buffer limits to suppress global loads and ignore unnecessary ds_reads
     "SuppressNoLoadLoop":         [False, True],
@@ -1108,12 +1097,6 @@ defaultBenchmarkCommonParameters = [
     {"GlobalReadCoalesceGroupB":  [ True ] },
     {"PrefetchGlobalRead":        [ 1 ] },
     {"PrefetchLocalRead":         [ 1 ] },
-    {"GlobalRead2A":              [ True ] },
-    {"GlobalRead2B":              [ True ] },
-    {"LocalWrite2A":              [ True ] },
-    {"LocalWrite2B":              [ True ] },
-    {"LocalRead2A":               [ True ] },
-    {"LocalRead2B":               [ True ] },
     {"SuppressNoLoadLoop":        [ False ]},
     {"ExpandPointerSwap":         [ True ]},
 

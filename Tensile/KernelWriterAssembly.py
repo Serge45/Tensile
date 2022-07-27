@@ -794,7 +794,7 @@ class KernelWriterAssembly(KernelWriter):
         or self.readPerpendicularComponentsA
     self.globalReadInstructionIdxA = \
         self.selectMemoryInstruction("GlobalRead", self.globalReadWidthA, \
-        kernel["GlobalRead2A"], \
+        False, \
         self.globalRead2CoalescedA, self.globalRead2PerpendicularA, [] )
     ########################################
     # globalReadB instruction; no flat_load2_
@@ -805,7 +805,7 @@ class KernelWriterAssembly(KernelWriter):
         or self.readPerpendicularComponentsB
     self.globalReadInstructionIdxB = \
         self.selectMemoryInstruction("GlobalRead", self.globalReadWidthB, \
-        kernel["GlobalRead2B"], \
+        False, \
         self.globalRead2CoalescedB, self.globalRead2PerpendicularB, [] )
 
     ########################################
@@ -855,7 +855,7 @@ class KernelWriterAssembly(KernelWriter):
         (self.localWriteStrideUnrollA*tPA["bpe"])//self.bpr
     self.localWriteInstructionIdxA = \
         self.selectMemoryInstruction("LocalWrite", self.localWriteWidthA, \
-        kernel["LocalWrite2A"], \
+        False, \
         self.localWrite2CoalescedA, self.localWrite2PerpendicularA,
         [self.localWriteStrideTileA, self.localWriteStrideUnrollA] )
 
@@ -906,7 +906,7 @@ class KernelWriterAssembly(KernelWriter):
         (self.localWriteStrideUnrollB*tPB["bpe"])//self.bpr
     self.localWriteInstructionIdxB = \
         self.selectMemoryInstruction("LocalWrite", self.localWriteWidthB, \
-        kernel["LocalWrite2B"], \
+        False, \
         self.localWrite2CoalescedB, self.localWrite2PerpendicularB,
         [self.localWriteStrideTileB, self.localWriteStrideUnrollB] )
 
@@ -931,7 +931,7 @@ class KernelWriterAssembly(KernelWriter):
     self.localRead2CoalescedA = kernel["ThreadTile0"]//kernel["VectorWidth"] > 1
     self.localReadInstructionIdxA = \
         self.selectMemoryInstruction("LocalRead", localReadWidth, \
-        kernel["LocalRead2A"], \
+        False, \
         self.localRead2CoalescedA, localRead2Perpendicular,
         [self.localReadStrideCoalescedA] )
     tPA["localReadSwapByteOffset"] = 0
@@ -960,7 +960,7 @@ class KernelWriterAssembly(KernelWriter):
     self.localRead2CoalescedB = kernel["ThreadTile1"]//kernel["VectorWidth"] > 1
     self.localReadInstructionIdxB = \
         self.selectMemoryInstruction("LocalRead", localReadWidth, \
-        kernel["LocalRead2B"], \
+        False, \
         self.localRead2CoalescedB, localRead2Perpendicular,
         [self.localReadStrideCoalescedB] )
 
@@ -6415,7 +6415,7 @@ class KernelWriterAssembly(KernelWriter):
 
     lwvw = getattr(self, "localWriteWidth{}".format(tc))
     newInstIdx = self.selectMemoryInstruction("LocalWrite", lwvw*kernel["DepthULdsDivisor"], \
-        kernel["LocalWrite2A"], \
+        False, \
         self.localWrite2CoalescedA, self.localWrite2PerpendicularA,
         [self.localWriteStrideTileA, self.localWriteStrideUnrollA] )
     tP["localWriteInstruction"] = self.memoryInstructions["LocalWrite"][newInstIdx]
@@ -6469,7 +6469,7 @@ class KernelWriterAssembly(KernelWriter):
           localReadWidth = (kernel["MIInputPerThread"] * self.tPA["bpe"]) // self.bpr
         self.localReadInstructionIdxA = \
           self.selectMemoryInstruction("LocalRead", localReadWidth, \
-          kernel["LocalRead2A"], \
+          False, \
           self.localRead2CoalescedA, localRead2Perpendicular,
           [self.localReadStrideCoalescedA] )
         self.localReadInstructionA = instructions["LocalRead"][self.localReadInstructionIdxA]
@@ -6479,7 +6479,7 @@ class KernelWriterAssembly(KernelWriter):
           localReadWidth = (kernel["MIInputPerThread"] * self.tPB["bpe"]) // self.bpr
         self.localReadInstructionIdxB = \
           self.selectMemoryInstruction("LocalRead", localReadWidth, \
-          kernel["LocalRead2B"], \
+          False, \
           self.localRead2CoalescedB, localRead2Perpendicular,
           [self.localReadStrideCoalescedB] )
         self.localReadInstructionB = instructions["LocalRead"][ \
