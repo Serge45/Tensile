@@ -257,7 +257,6 @@ def generateMfmaScheme():
             "PrefetchLocalRead": [True],
             "PrefetchGlobalRead": [True],
             "ScheduleIterAlg": [1,3],
-            "DisableVgprOverlapping": [True,False],
             "WaveSeparateGlobalReadA": [True,False],
             "WaveSeparateGlobalReadB": [True,False],
             "InnerUnroll": [1,2],

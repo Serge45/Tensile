@@ -78,7 +78,6 @@ custom.config:
   BufferLoad: True
   DepthU: 32
   DirectToLds: False
-  DisableVgprOverlapping: False
   ExpandPointerSwap: True
   FractionalLoad: 0
   GlobalReadVectorWidth: 4

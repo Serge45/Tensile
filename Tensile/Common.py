@@ -463,10 +463,6 @@ validParameters = {
     # GSUSARR=True means the 4 workgroups round robin split up the chunks of the summation: k=0 -> DU-1, 4DU -> 5DU-1, ...; k=1DU -> 2DU-1, 5DU -> 6DU-1...; ...
     "GlobalSplitUSummationAssignmentRoundRobin":  [ False, True ],
 
-    # in opencl for some compilers, performance improved by putting a memfence after each subiteration; it prevented the loads of one subiteration from being moved
-    # into a prior iteration, which would help latency but it consumed more vgprs which was a net loss
-    "UnrollMemFence":             [ False, True ],
-
     # not used yet; will refer to combining multiple reads into single instruction
     # such as ds_read_b32 -> ds_read2_b32
     # the pro is that it cuts in half the number of instructions
@@ -887,16 +883,6 @@ validParameters = {
     # Only support for kernel whose totalVgpr counts less than 256 and gcn that has control bit ACC_CD.
     "MIArchVgpr":               [False, True],
 
-    # Disable overlapping AB-tile vgpr and read/write addr vgprs with C-tile vgprs
-    # Valid only for MatrixInstruction enabled kernels, which by default overlaps
-    # C-tile w/ AB-tile until it's due for v_accvgpr_read before the writeback. Illustrated below:
-    # |<----------------------- valuC ----------------------->|
-    # |<--- valuA/B --->|<-- R/W pointers -->|xxx|<- Spares ->|
-    #                                          ^        ^
-    #         (Reserved by persistent kernels) ^        ^
-    #                       (Utilized by register pool) ^
-    "DisableVgprOverlapping":     [False, True],
-
     # If positive, each switch includes switches <= the specified switch.
     # For example 3 will enable NoPostLoop+NoGlobalRead+NoLocalWrite
     # If negative, setting is precise and will disable only the specified code piece.
@@ -1134,7 +1120,6 @@ defaultBenchmarkCommonParameters = [
     {"GlobalReadCoalesceGroupB":  [ True ] },
     {"PrefetchGlobalRead":        [ 1 ] },
     {"PrefetchLocalRead":         [ 1 ] },
-    {"UnrollMemFence":            [ False ] },
     {"GlobalRead2A":              [ True ] },
     {"GlobalRead2B":              [ True ] },
     {"LocalWrite2A":              [ True ] },
@@ -1202,7 +1187,6 @@ defaultBenchmarkCommonParameters = [
     {"MACInstruction":            [ "FMA" ]}, # Default to FMA, matches MAC performance and integrates additional flags
     {"WavefrontSize":             [ 64 ]},
     {"MatrixInstruction":         [ [] ] },
-    {"DisableVgprOverlapping":    [ False ] },
     {"1LDSBuffer":                [ 0 ] },
     {"DisableKernelPieces":       [ 0 ] },
     {"DepthU":                    [ -1 ] },
