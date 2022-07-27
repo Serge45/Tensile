@@ -24,52 +24,6 @@ from ..Component import Component, MAC
 from ..DataType import DataType
 
 
-class FMA_I8_HPA_DOT4(MAC):
-    asmCaps = lambda caps: caps["v_dot4c_i32_i8"] or caps["v_dot4_i32_i8"]
-    kernel = {"ProblemType": {"DataType": DataType(DataType.int8),
-                              "HighPrecisionAccumulate": True},
-              "LocalDotLayout": 4
-             }
-
-    def __call__(self, writer, m, innerUnroll):
-        kernel = writer.kernel
-
-        module = Code.Module("FMA_I8_HPA_DOT4")
-        module.addComment(self.commentHeader())
-
-        priority = Component.Priority.find(writer)
-
-        accumulate  = writer.asmCaps["v_dot4c_i32_i8"]
-        ThreadTile0 = kernel["ThreadTile0"]
-        ThreadTile1 = kernel["ThreadTile1"]
-        instruction = "v_dot4c_i32_i8" if accumulate else "v_dot4_i32_i8"
-        inTSize     = 4
-
-        module.addComment('C index : {blockA}*{inTSize} + {blockB}*{inTSize}*{ThreadTile0} + {indexB}*{ThreadTile0} + {indexA}')
-
-        for blockB in range(0, ThreadTile1//inTSize):
-            for blockA in range(0, ThreadTile0//inTSize):
-                for indexB in range(inTSize):
-                    for indexA in range(inTSize):
-                        cIdxStr = f'{blockA}*{inTSize} + {blockB}*{inTSize}*{ThreadTile0} + {indexB}*{ThreadTile0} + {indexA}'
-                        cIdx = eval(cIdxStr)
-
-                        cStr = f'v[vgprValuC + {cIdxStr}]'
-                        aStr = f'v[vgprValuA_X{m}_I{indexA}+{blockA}]'
-                        bStr = f'v[vgprValuB_X{m}_I{indexB}+{blockB}]'
-                        if accumulate:
-                          module.addInst(instruction, cStr, aStr, bStr, "ValuC[%u]" % cIdx)
-                          kStr += f'{instruction} {cStr}, {aStr}, {bStr} // ValuC[{cIdx}]{endLine}'
-                        else:
-                            module.addInst(instruction, cStr, aStr, bStr, cStr, "ValuC[%u]" % cIdx)
-
-                        module.addCode(priority(writer, 1, "Raise priority while processing macs"))
-
-        module.addCode(priority(writer, 0, "Reset priority after macs"))
-
-        return module
-
-
 class FMA_I8_HPA(MAC):
     @staticmethod
     def asmCaps(caps):
@@ -77,7 +31,6 @@ class FMA_I8_HPA(MAC):
 
     kernel = {
         "ProblemType": {"DataType": DataType(DataType.int8), "HighPrecisionAccumulate": True},
-        "LocalDotLayout": 1
     }
 
     def __call__(self, writer, m, innerUnroll):

@@ -1421,8 +1421,6 @@ class Solution(collections.abc.Mapping):
     # check can we use WaveSeparateGlobalRead
     numOfWaves = state["NumThreads"] // state["WavefrontSize"]
     if state["WaveSeparateGlobalRead%s"%tc]:
-      if state["LocalDotLayout"]>1:
-        reject(state, "didn't support WaveSeparateGlobalRead when LocalDotLayout(%u) > 1" % state["LocalDotLayout"])
       if state["ProblemType"]["TLU%s"%tc] and (state["DepthU"] > 0) and (state["DepthU"] % numOfWaves != 0):
         reject(state, "didn't support WaveSeparateGlobalRead when DepthU is not multiple of wave %u in TLU%s" % (state["DepthU"], tc))
       if not state["ProblemType"]["TLU%s"%tc] and (state["MacroTile%s" % tc] % numOfWaves != 0):
@@ -2791,38 +2789,6 @@ class Solution(collections.abc.Mapping):
     if state["KernelLanguage"] != "Assembly" and state["InnerUnroll"] != 1:
       reject(state, "InnerUnroll only supported on assembly")
     state["LoopUnroll"] //= state["InnerUnroll"]
-
-    # check LocalDotLayout
-    ldl = state["LocalDotLayout"]
-    if ldl> 1:
-      state["DirectToLds"] = False
-
-      if state["KernelLanguage"] == "Assembly":
-        if state["EnableMatrixInstruction"]:
-          reject(state, "doesn't support LocalDotLayout > 1 in MFMA mode")
-        else: # VALU mode
-          if state["ProblemType"]["DataType"].isInt8():
-            if (ldl != 4) or (state["ProblemType"]["HighPrecisionAccumulate"] != True):
-              reject(state, "Only support Int8 HPA and LocalDotLayout 4")
-              return
-          elif state["ProblemType"]["DataType"].isHalf():
-            if ldl > 2:
-              reject(state, "doesn't support FP16 with LocalDotLayout > 2")
-              return
-            elif (ldl == 2) and (state["ProblemType"]["HighPrecisionAccumulate"] != True):
-              reject(state, "doesn't support non HPA FP16 with LocalDotLayout == 2")
-              return
-          else: # other type
-              reject(state, "doesn't support LocalDotLayout with type {}".format(str(state["ProblemType"]["DataType"])))
-              return
-
-          if ldl != state["InnerUnroll"]:
-            reject(state, "only support LocalDotLayout = InnerUnroll when LocalDotLayout > 1")
-            return
-
-          if ((state["LSPA"] % ldl) != 0) or ((state["LSPB"] % ldl) != 0):
-            reject(state, "LSPA/B should be multiple of LocalDotLayout")
-            return
 
     if 0:
       print("info: ", pvar(state, "LoopUnroll"), " LDS Stats:", pvar(state, "LdsOffsetA"), pvar(state, "LdsOffsetB"))

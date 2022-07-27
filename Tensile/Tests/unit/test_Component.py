@@ -118,7 +118,6 @@ def f16():
         'kernel': {"ProblemType": {"DataType": DataType(DataType.half),
                                    "HighPrecisionAccumulate": False},
                    "AggressivePerfMode": True,
-                   "LocalDotLayout": 1,
                    "InnerUnroll": 1,
                    "ThreadTile0": 4,
                    "ThreadTile1": 4}
@@ -130,20 +129,7 @@ def f16_hpa():
         'kernel': {"ProblemType": {"DataType": DataType(DataType.half),
                                    "HighPrecisionAccumulate": True},
                    "AggressivePerfMode": True,
-                   "LocalDotLayout": 1,
                    "InnerUnroll": 1,
-                   "ThreadTile0": 4,
-                   "ThreadTile1": 4}
-    }
-
-@pytest.fixture
-def f16_hpa_ldl():
-    return {
-        'kernel': {"ProblemType": {"DataType": DataType(DataType.half),
-                                   "HighPrecisionAccumulate": True},
-                   "AggressivePerfMode": True,
-                   "LocalDotLayout": 2,
-                   "InnerUnroll": 2,
                    "ThreadTile0": 4,
                    "ThreadTile1": 4}
     }

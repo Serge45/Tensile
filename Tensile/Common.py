@@ -1048,11 +1048,6 @@ validParameters = {
     # For example, InnerUnroll=2 will fetch LDS for two unroll iterations
     "InnerUnroll":                [1,2,4,8,16,32,64],
 
-    # Arrange elements in LDS so N elements consec in U-dim are adjacent in LDS
-    # 1 is default and results in no interleaving.
-    # Implementation only supports LocalDotLayout that is a power-of-two
-    "LocalDotLayout":             [1,2,4,8],
-
     # Aggressive performance mode
     # Some of these may cause instability, particularly s_setprio
     # 0=none, 1=add setprio, 2=add setprio and modify LDS to allow only 2 waves/simd
@@ -1098,7 +1093,6 @@ defaultBenchmarkCommonParameters = [
     {"LoopTail":                  [ True ] },
     {"EdgeType":                  [ "Branch" ] },
     {"InnerUnroll":               [ 1 ] },
-    {"LocalDotLayout":            [ 1 ] },
     {"AggressivePerfMode":        [ 1 ] },
     {"KernelLanguage":            [ "Assembly" ] },
     {"LdsPadA":                   [ 0 ] },

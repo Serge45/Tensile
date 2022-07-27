@@ -43,7 +43,6 @@ Values in the dictionaries can be lambdas for more advanced logic:
         #archCaps = {}
         kernel = {"ProblemType": {"DataType": DataType(DataType.half),
                                 "HighPrecisionAccumulate": True},
-                "LocalDotLayout": lambda ldl: ldl > 1
                 }
 ```
 

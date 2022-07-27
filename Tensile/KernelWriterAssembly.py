@@ -3663,85 +3663,30 @@ class KernelWriterAssembly(KernelWriter):
     else:
       destVgpr = "LocalWriteAddr%s"%tc
 
-    dotInterleave = kernel["LocalDotLayout"]
-
-    if dotInterleave == 1:
-      if kernel["UnrollMajorLDS%s" % tc]:
-        lds_stride = kernel["_DepthULds"] + LdsPad
-        module.addInst("v_mul_u32_u24", vgpr(destVgpr), hex(lds_stride), vgpr(tP["gpr"]["lwoT"]), \
-            "lw%s%s**(DepthU_Compute + PAD)"%(tP["tensorChar"], self.unrollChar))
-        module.addInst("_v_add_lshl_u32", vgpr(destVgpr), vgpr(uReg), vgpr(destVgpr), hex(log2(tP["bpe"])), \
-            "lwFO%s = (lw%s%s + lw%s%s*(DepthU+PAD))*bpe" % (tc, tc, tc, tc, self.unrollChar) )
-      else:
-        lds_stride = kernel["MacroTile%s"%tP["tensorChar"]] + LdsPad
-        module.addInst("v_mul_u32_u24", vgpr(destVgpr), hex(lds_stride), vgpr(uReg), \
-            "lw%s%s**(MT%s + PAD)"%(tP["tensorChar"], self.unrollChar, tP["tensorChar"]))
-        module.addInst("_v_add_lshl_u32", vgpr(destVgpr), vgpr(tP["gpr"]["lwoT"]), vgpr(destVgpr), hex(log2(tP["bpe"])), \
-            "lwFO%s = (lw%s%s + lw%s%s*(MT%s+PAD))*bpe" % (tc, tc, tc, tc, self.unrollChar, tP["tileChar"]) )
-
-      # LdsBlockSizePerPad: add padding
-      if kernel["LdsBlockSizePerPad%s"%tc] != 0 and kernel["LdsPad%s"%tc] != 0:
-        tmpVgpr = self.vgprPool.checkOut(2)
-        tmpSgpr = self.getTmpSgpr(1).idx()
-        module.addCode(vectorStaticDivide(uReg, destVgpr, kernel["LdsBlockSizePerPad%s"%tc], tmpVgpr, tmpSgpr, \
-          "padding %u per block %u" % (kernel["LdsPad%s"%tc], kernel["LdsBlockSizePerPad%s"%tc])))
-        module.addCode(staticMultiply(vgpr(uReg), vgpr(uReg), kernel["LdsPad%s"%tc] * tP["bpe"], sgpr(tmpSgpr), \
-          "padding %u per block %u" % (kernel["LdsPad%s"%tc], kernel["LdsBlockSizePerPad%s"%tc])))
-        module.addInst("_v_add_u32", vgpr(destVgpr), vgpr(uReg), vgpr(destVgpr), \
-          "add padding %u per block %u" % (kernel["LdsPad%s"%tc], kernel["LdsBlockSizePerPad%s"%tc]))
-        self.vgprPool.checkIn(tmpVgpr)
+    if kernel["UnrollMajorLDS%s" % tc]:
+      lds_stride = kernel["_DepthULds"] + LdsPad
+      module.addInst("v_mul_u32_u24", vgpr(destVgpr), hex(lds_stride), vgpr(tP["gpr"]["lwoT"]), \
+          "lw%s%s**(DepthU_Compute + PAD)"%(tP["tensorChar"], self.unrollChar))
+      module.addInst("_v_add_lshl_u32", vgpr(destVgpr), vgpr(uReg), vgpr(destVgpr), hex(log2(tP["bpe"])), \
+          "lwFO%s = (lw%s%s + lw%s%s*(DepthU+PAD))*bpe" % (tc, tc, tc, tc, self.unrollChar) )
     else:
-      ldlOffsetVgpr = self.vgprPool.checkOut(1, "ldlOffsetVgpr", self.preventVgprOverflowDuringNewTile)
-      uRegScrap = self.vgprPool.checkOut(1, "uRegScrap", self.preventVgprOverflowDuringNewTile)
-      # likely broken for dot4, revisit
-      # odd tiles will write to MT, even tiles to normal location
-      module.addInst("v_and_b32", \
-          vgpr(destVgpr), \
-          ~(kernel["LocalDotLayout"]-1), \
-          vgpr(tP["gpr"]["lwoT"]), \
-          "lwoT & ~(LDL-1)")
-      # uReg bit 1 maps to LDS offset bit 1 (calculateLdsWriteOffset) or LocalWriteAddr (here)
-      module.addInst("v_and_b32", \
-          vgpr(uRegScrap), \
-          kernel["LocalDotLayout"]-1, \
-          vgpr(uReg), \
-          "uReg & LDL-1")
-      module.addInst("v_and_b32", \
-          vgpr(uReg), \
-          ~(kernel["LocalDotLayout"]-1), \
-          vgpr(uReg), \
-          "uReg & LDL-1")
-      module.addInst("v_and_b32", \
-          vgpr(ldlOffsetVgpr), \
-          kernel["LocalDotLayout"]-1, \
-          vgpr(tP["gpr"]["lwoT"]), \
-          "lwoT & LDL-1")
-      module.addInst("_v_lshl_add_u32", \
-          vgpr(uReg), \
-          vgpr(ldlOffsetVgpr), \
-          #log2(kernel["LocalDotLayout"]), \
-          0, \
-          vgpr(uReg), \
-          "shift scrap by LDL")
-      module.addInst("v_mul_u32_u24", \
-          vgpr(uReg), \
-          hex(kernel["MacroTile%s"%tP["tensorChar"]] + LdsPad), \
-          vgpr(uReg), \
+      lds_stride = kernel["MacroTile%s"%tP["tensorChar"]] + LdsPad
+      module.addInst("v_mul_u32_u24", vgpr(destVgpr), hex(lds_stride), vgpr(uReg), \
           "lw%s%s**(MT%s + PAD)"%(tP["tensorChar"], self.unrollChar, tP["tensorChar"]))
-      module.addInst("_v_add_co_u32", \
-          vgpr(uReg), \
-          self.vcc, \
-          vgpr(uRegScrap), \
-          vgpr(uReg), \
-          "add scraps from LDL masking")
-      module.addInst("_v_add_lshl_u32", \
-          vgpr(destVgpr), \
-          vgpr(uReg), \
-          vgpr(destVgpr), \
-          hex(log2(tP["bpe"])), \
-          " *= bpe")
-      self.vgprPool.checkIn(uRegScrap)
-      self.vgprPool.checkIn(ldlOffsetVgpr)
+      module.addInst("_v_add_lshl_u32", vgpr(destVgpr), vgpr(tP["gpr"]["lwoT"]), vgpr(destVgpr), hex(log2(tP["bpe"])), \
+          "lwFO%s = (lw%s%s + lw%s%s*(MT%s+PAD))*bpe" % (tc, tc, tc, tc, self.unrollChar, tP["tileChar"]) )
+
+    # LdsBlockSizePerPad: add padding
+    if kernel["LdsBlockSizePerPad%s"%tc] != 0 and kernel["LdsPad%s"%tc] != 0:
+      tmpVgpr = self.vgprPool.checkOut(2)
+      tmpSgpr = self.getTmpSgpr(1).idx()
+      module.addCode(vectorStaticDivide(uReg, destVgpr, kernel["LdsBlockSizePerPad%s"%tc], tmpVgpr, tmpSgpr, \
+        "padding %u per block %u" % (kernel["LdsPad%s"%tc], kernel["LdsBlockSizePerPad%s"%tc])))
+      module.addCode(staticMultiply(vgpr(uReg), vgpr(uReg), kernel["LdsPad%s"%tc] * tP["bpe"], sgpr(tmpSgpr), \
+        "padding %u per block %u" % (kernel["LdsPad%s"%tc], kernel["LdsBlockSizePerPad%s"%tc])))
+      module.addInst("_v_add_u32", vgpr(destVgpr), vgpr(uReg), vgpr(destVgpr), \
+        "add padding %u per block %u" % (kernel["LdsPad%s"%tc], kernel["LdsBlockSizePerPad%s"%tc]))
+      self.vgprPool.checkIn(tmpVgpr)
 
     if tP["isB"]:
       if kernel["LdsOffsetB"] != 0: # LdsOffsetB can be 0 if DirectToVgprA is enabled
@@ -4704,8 +4649,6 @@ class KernelWriterAssembly(KernelWriter):
         unrollInc      *= kernel["MatrixInstK"]
         KinInnerUnroll *= kernel["MatrixInstK"]
       if kernel["AssertSummationElementMultiple"] % KinInnerUnroll == 0:
-        unrollInc *= kernel["InnerUnroll"]
-      elif (kernel["LocalDotLayout"] > 1) and (kernel["InnerUnroll"] == kernel["LocalDotLayout"]):
         unrollInc *= kernel["InnerUnroll"]
 
       module.addComment1("closeLoop loop%s finalLoop=%d tailLoop=%d" % (loopChar, finalLoop, tailLoop))
@@ -6368,8 +6311,6 @@ class KernelWriterAssembly(KernelWriter):
   #   Result is we map a tile from global memory into LDS.  Consecutive LDS
   #   locations contain elements from different summation 'rows' - therefore
   #   loading a row of LDS will feed computations for different C tile indices.
-  #   LocalDotLayout>1 will place N elements from same summation 'row' in
-  #   adjacent dims, which is handy for feeding dot instructions.
   # Notes:
   #   Total load insts is nrc * nrp which load the macro-tile.
   #   Par and coalesced are ~synonyms referring to same dimension
@@ -6387,19 +6328,11 @@ class KernelWriterAssembly(KernelWriter):
   #############################################################################
   def calculateLdsWriteOffset(self, perp, para, sPerp, sPara, kernel, tP, localWriteCnt):
     tc = tP["tensorChar"]
-    ldl = kernel["LocalDotLayout"]
-    mask = ldl-1
+    mask = 0
     #print "tc ", tc, " perp ", perp, " para ", para, " sPerp ", sPerp, " sPara ", sPara
     lscaOffset = para * kernel[tP["lsc"]]
     perp_masked = perp
     perp_rem = 0
-    if (ldl > 1):
-      if (kernel[tP["mt"]] >= kernel["SubGroup0"] * kernel["SubGroup1"] * tP["glvw"]):
-        # Since it will take multiple fetches to get a full MT, we map low bits of perp to small,
-        # horizontal shift to fill in gaps we made by spacing out the data for LDL.
-        # Other cases will be handled by low bits of uReg in lwaFirstOffset().
-        perp_masked = perp & ~mask
-        perp_rem = perp & mask
     lspaOffset = perp_masked * kernel[tP["lsp"]]
     rem = 0
 
@@ -6410,17 +6343,13 @@ class KernelWriterAssembly(KernelWriter):
     if tP["tlu"] != kernel["UnrollMajorLDS%s" % tP["tensorChar"]]:
       lspaOffset += sPerp & mask
       lscaOffset += sPara
-      rem = (sPerp & ~mask) >> log2(ldl)
-      if ldl > 1:
-        #i = sPara + (tP["nrcv"]/tP["nrcvpi"]) * (para * tP["glvw"] + tP["nrc"] * (sPerp + tP["glvw"] * tP["nrpv"] * perp ))
-        i = localWriteCnt
-      else:
-        i = sPara + (tP["nrcv"]//tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp_masked))
+      rem = (sPerp & ~mask)
+      i = sPara + (tP["nrcv"]//tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp_masked))
       #print "nrcv ", tP["nrcv"], " nrcvpi ", tP["nrcvpi"], " nrc ", tP["nrc"], " nrpv ", tP["nrpv"]
     else:
-      lscaOffset += (sPara // ldl) * ldl
+      lscaOffset += sPara
       lspaOffset += sPerp
-      rem = sPara % ldl
+      rem = 0
       i = sPara + (tP["nrcv"]//tP["nrcvpi"]) * (para * tP["glvw"] + tP["nrc"] * (sPerp + tP["glvw"] * tP["nrpv"] * perp ))
 
     #if not tP["tlu"]:
@@ -6436,7 +6365,7 @@ class KernelWriterAssembly(KernelWriter):
 
     if tP["tlu"] != kernel["UnrollMajorLDS%s" % tP["tensorChar"]]:
       lspaOffset *= lds_stride
-      lspaOffset += rem * ldl + perp_rem
+      lspaOffset += rem + perp_rem
     else:
       lscaOffset *= lds_stride
       lscaOffset += rem

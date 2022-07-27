@@ -87,7 +87,6 @@ custom.config:
   LdsBlockSizePerPad: 0
   LdsPadA: 0
   LdsPadB: 0
-  LocalDotLayout: 1
   LocalReadVectorWidth: 4
   MagicDivAlg: 2
   NumLoadsCoalescedA: 1
