@@ -64,11 +64,7 @@ class SignatureCOV3(Signature):
             agprStart = ceil(totalVgprs/8)*8
             vgprCount = agprStart + writer.agprPool.size()
 
-        if kernel["AggressivePerfMode"]>=2 and kernel["ProblemType"]["DataType"].isDouble() and \
-            kernel["ThreadTile0"] == 4 and kernel["ThreadTile1"] == 4 and kernel["WorkGroup"] == [16,16,1]:
-            group_segment_size = 32768 # Pad LDS to ensure we run exactly two waves
-        else:
-            group_segment_size = kernel["LdsNumElements"] * writer.bpeAB
+        group_segment_size = kernel["LdsNumElements"] * writer.bpeAB
 
         sgprWgZ = 1 if kernel["ProblemType"]["NumIndicesC"] > 2 else 0
         signature.addKernelDescriptor(Code.SignatureKernelDescriptorV3(target=gfxName(writer.version),

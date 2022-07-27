@@ -74,7 +74,6 @@ custom.config:
     UseBeta: True
     Batched: True
   1LDSBuffer: 0
-  AggressivePerfMode: 1
   BufferLoad: True
   DepthU: 32
   DirectToLds: False

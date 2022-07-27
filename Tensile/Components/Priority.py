@@ -28,15 +28,6 @@ class Priority(Component):
     """
     pass
 
-class ConstantPriority(Priority):
-    """
-    Priority implementation which does nothing.
-    """
-    kernel = {"AggressivePerfMode": False}
-
-    def __call__(self, writer, prio, message=""):
-        return Code.TextBlock("// ConstantPriority (Empty)")
-
 class AggressivePriority(Priority):
     """
     Priority implementation which does set the priority.
@@ -44,7 +35,6 @@ class AggressivePriority(Priority):
     Keeps track of the previous value in the instance and only sets priority
     if the new priority is different.
     """
-    kernel = {"AggressivePerfMode": True}
 
     def __init__(self, currentPrio=None):
         self.currentPrio = currentPrio

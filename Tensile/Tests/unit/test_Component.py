@@ -117,7 +117,6 @@ def f16():
     return {
         'kernel': {"ProblemType": {"DataType": DataType(DataType.half),
                                    "HighPrecisionAccumulate": False},
-                   "AggressivePerfMode": True,
                    "InnerUnroll": 1,
                    "ThreadTile0": 4,
                    "ThreadTile1": 4}
@@ -128,7 +127,6 @@ def f16_hpa():
     return {
         'kernel': {"ProblemType": {"DataType": DataType(DataType.half),
                                    "HighPrecisionAccumulate": True},
-                   "AggressivePerfMode": True,
                    "InnerUnroll": 1,
                    "ThreadTile0": 4,
                    "ThreadTile1": 4}
@@ -138,7 +136,6 @@ def f16_hpa():
 #                             'v_pk_fma_f16': False},
 #                  kernel = {"ProblemType": {"DataType": DataType(DataType.half),
 #                                            "HighPrecisionAccumulate": False},
-#                            "AggressivePerfMode": True,
 #                            "ThreadTile0": 4,
 #                            "ThreadTile1": 4},
 #                  endLine = '\n')
