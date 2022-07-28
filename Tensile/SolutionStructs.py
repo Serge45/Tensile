@@ -791,12 +791,9 @@ class ActivationArgs:
 
 # kds is class Solution or class Kernel
 # If PackFreeDims=1 then all free dims are packed ; else only 1 free dim/matrix is supported
-# PackBatchDims can pack batches into A or B (has stride==0 requirements for non-packed tensor);
-# batchMask controls which bit in PackBatchDims detects batch index
-def isPackedIndex(ks, index, batchMask=0x3):
+def isPackedIndex(ks, index):
   problemType = ks["ProblemType"]
-  return index in problemType["IndicesFree"] and ks["PackFreeDims"] or \
-         index in problemType["IndicesBatch"] and (ks["PackBatchDims"] & batchMask)
+  return index in problemType["IndicesFree"] and ks["PackFreeDims"]
 
 def isExtractableIndex(ks, index, tc='x'):
   xA = index in ks['PackedC0IndicesX'][:-1]
@@ -1803,16 +1800,10 @@ class Solution(collections.abc.Mapping):
       for (tc) in ('C','D'):
         state["AssertStride%sEqual"%tc][0]=1
 
-    # Add AssertStride*Equal for PackBatchDims, if needed
-    for (mask, tc) in ((0x1,'B'), (0x2,'A')):
-      if state["PackBatchDims"] & mask:
-        for bi in problemType["IndicesBatch"]:
-          state["AssertStride%sEqual"%tc][problemType["IndexAssignments%s"%tc].index(bi)] = 0
-
     for (tc,batchMask) in (('A', 0x1), ('B', 0x2)):
       freeDims = [i for i in problemType["IndexAssignments%s"%tc] if i in problemType["IndicesFree"]]
-      if not freeDims and (not problemType["AllowNoFreeDims"] or not (state["PackBatchDims"] & batchMask)):
-        reject(state, "tensor%s contains no free indices.  Set AllowNoFreeDims and PackBatchDims&%s" % (tc, batchMask))
+      if not freeDims:
+        reject(state, "tensor%s contains no free indices.")
         return False
 
     # Determine which indices will be packed together as this impacts several different parms (sizes, magic numbers, etc)
@@ -1824,24 +1815,20 @@ class Solution(collections.abc.Mapping):
     state["PackedC0IdxChars"] = []
     state["PackedC0IndicesX"] = []
     indexChars = globalParameters["IndexChars"]
-    # Pack all the dimensions (batch and free) of A into grid[0]
+    # Pack all the dimensions (free) of A into grid[0]
 
     if problemType["Index0"] in problemType["IndexAssignmentsA"]:
       tc0 = 'A'
       tc1 = 'B'
-      batch0Mask = 0x1
-      batch1Mask = 0x2
     else:
       tc0 = 'B'
       tc1 = 'A'
-      batch0Mask = 0x2
-      batch1Mask = 0x1
-    assert(isPackedIndex(state, problemType["Index01A"], 0x1))
-    assert(isPackedIndex(state, problemType["Index01B"], 0x2))
+    assert(isPackedIndex(state, problemType["Index01A"]))
+    assert(isPackedIndex(state, problemType["Index01B"]))
 
     # Pack all the dimensions (batch and free) of A into grid[0]
     for idx in problemType["IndexAssignments%s"%tc0]:
-      if isPackedIndex(state, idx, batch0Mask):
+      if isPackedIndex(state, idx):
         assert (idx < problemType["NumIndicesC"])
         state["PackedC0IdxChars"].append("%s" % indexChars[idx])
         state["PackedC0IndicesX"].append(idx)
@@ -1849,7 +1836,7 @@ class Solution(collections.abc.Mapping):
     state["PackedC1IdxChars"] = []
     state["PackedC1IndicesX"] = []
     for idx in problemType["IndexAssignments%s"%tc1]:
-      if isPackedIndex(state, idx, batch1Mask):
+      if isPackedIndex(state, idx):
         assert (idx < problemType["NumIndicesC"])
         state["PackedC1IdxChars"].append("%s" % indexChars[idx])
         state["PackedC1IndicesX"].append(idx)

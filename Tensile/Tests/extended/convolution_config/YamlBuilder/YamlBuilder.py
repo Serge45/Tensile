@@ -57,7 +57,6 @@ class Solutions:
                         [  8, 8, 1 ]
                         ]},
                     {"DepthU": [8]},
-                    {"PackBatchDims": [1]}, # required to handle some Backward-Weights cases
                     {"GlobalReadVectorWidth": [1]},
                     {"VectorWidth": [1]},
                 ]
@@ -80,7 +79,6 @@ class Solutions:
                         [  8, 16, 1 ]
                         ]},
                     {"DepthU": [4]},
-                    {"PackBatchDims": [0,1]},
                     {"GlobalSplitU": [1,2,4,7,17]},
                     {"GlobalReadVectorWidth": [-1]},
                     {"VectorWidth": [1,-1]},
@@ -103,7 +101,6 @@ class Solutions:
                         [  8, 8, 1 ]
                         ]},
                     {"DepthU": [8]},
-                    {"PackBatchDims": [1]}, # required to handle some Backward-Weights cases
                     {"GlobalReadVectorWidth": [-1]},
                     {"VectorWidth": [1]},
                     {"FractionalLoad": [1]}
@@ -132,7 +129,6 @@ class Solutions:
                     {"GlobalReadVectorWidth": [-1]},
                     {"VectorWidth": [1,4]},
                     {"FractionalLoad": [1]},
-                    {"PackBatchDims": [0,1]},
                 ]
 
         return s
@@ -162,7 +158,6 @@ class Solutions:
                     {"GlobalReadVectorWidth": [-1]},
                     {"GlobalSplitU": [1,2,3,4,8,17]},
                     {"VectorWidth": [1,4]},
-                    {"PackBatchDims": [1]},
                     {"FractionalLoad": [1]}
                 ]
 
@@ -190,7 +185,6 @@ class Solutions:
                     {"GlobalReadVectorWidth": [-1,2]},
                     {"VectorWidth": [1,4]},
                     {"FractionalLoad": [1]},
-                    {"PackBatchDims": [0,1]},
                 ]
 
         return s

@@ -436,7 +436,7 @@ class SizeMapping:
                    depthU                = d['DepthU'],
                    globalSplitU          = d['GlobalSplitU'],
                    staggerStrideShift    = d['_staggerStrideShift'] if '_staggerStrideShift' in d else 0,
-                   packBatchDims         = d['PackBatchDims'] if 'PackBatchDims' in d else 0,
+                   packBatchDims         = 0,
                    magicDivAlg           = d.get('MagicDivAlg', 1),
                    sourceKernel          = d['KernelLanguage'] == 'Source',
                    globalAccumulation    = globalAccum,

@@ -1798,8 +1798,6 @@ class KernelWriterAssembly(KernelWriter):
       for i in indices:
         idxChars.append(self.indexChars[i])
 
-      packBatchDims = tP["PackBatchDims"] if tP != None else 0x3
-
       # macro declaration
       calcDims = [] # dimensions which are participating in the address calc (ignores other summation)
       mirrorSumDims = []
@@ -1826,7 +1824,7 @@ class KernelWriterAssembly(KernelWriter):
           continue
         else:
           # other batch or free index
-          if isPackedIndex(kernel, indices[i], packBatchDims):
+          if isPackedIndex(kernel, indices[i]):
             calcDims.append(i)
             macroArgs.append("vgprOffset%s:req" % idxChars[i])
           elif not justOffset32: # buffer/justOffset32 scalars are included in SRD not the offset, so skip here
@@ -1895,7 +1893,7 @@ class KernelWriterAssembly(KernelWriter):
           offsetIsVgpr = True
         # other c index sgpr (free or batch)
         elif indices[i] < kernel["ProblemType"]["NumIndicesC"]:
-          if isPackedIndex(kernel, indices[i], packBatchDims):
+          if isPackedIndex(kernel, indices[i]):
             offsetIsVgpr = True
           else:
             offsetIsVgpr = False
@@ -3052,7 +3050,7 @@ class KernelWriterAssembly(KernelWriter):
             iaToGpr[i] = vgprTile
             bfArgs.append( "%2u" % iaToGpr[i] )
           else:
-            if isPackedIndex(kernel,i, tP["PackBatchDims"]):
+            if isPackedIndex(kernel,i):
               iaToGpr[i] = tP["vgprPackedOffsets"] + \
                             (vgprTile-tP["vgprTileOffsets"])*(len(tP["PackedIndices"])-1) + \
                             packedIter

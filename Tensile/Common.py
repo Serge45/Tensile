@@ -857,17 +857,6 @@ validParameters = {
     #   this will create a set of kernels with progessively more pieces of the kernel disabled
     "DisableKernelPieces":        list(range(-9,10)),         # disable pieces of the kernel, for performance isolation
 
-    # Allow macro-tile to span batch dimensions and thus a single workgroup can work across batch dimensions.
-    # This can improve utilization, in particular if macro-tile is larger than the lower dimensions.
-    # The byte address of the last element in the packed array must fit in 2^32.
-    # 0x0 = each workgroup works on a single batch dim.
-    # 0x1 = pack Batch dimensions into wg0/A - works if all batch strides for B==0.
-    #       Also must set AssertFree0ElementMultiple to >= GlobalReadVectorWidth
-    # 0x2 = pack Batch dimensions into wg1/B - works if all batch strides for A==0
-    #       Also must set AssertFree1ElementMultiple to >= GlobalReadVectorWidth
-    # 0x3 = pack batch dims into both A and B. Could support any stride for A and B. (Not supported yet)
-    "PackBatchDims":             [0,1,2],
-
     # Pack free dimensions
     # If True, allow macro-tile to span free dimensions.  Single workgroup can work across multiple free dimensions.
     # If False, macro-tile is always Free0*Free1.  Additional free dimensions are not supported.
@@ -1106,7 +1095,6 @@ defaultBenchmarkCommonParameters = [
     {"GlobalSplitUAlgorithm":     [ "SingleBuffer" ] },
     {"MacroTileShapeMin":         [ 1 ] },
     {"MacroTileShapeMax":         [ 64 ] },
-    {"PackBatchDims":             [ 0 ] },
     {"PackFreeDims":              [ 1 ] },
     {"UnrollIncIsDepthU":         [ 0 ] },
     {"Use64bShadowLimit":         [ 1 ] },

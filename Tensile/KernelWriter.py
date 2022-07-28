@@ -3190,8 +3190,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
     self.getTensorParameters(tensorParametersA, kernel, True)
     self.getTensorParameters(tensorParametersB, kernel, False)
 
-    tensorParametersA["PackBatchDims"] = kernel["PackBatchDims"] if kernel["PackBatchDims"] & 0x1 else 0
-    tensorParametersB["PackBatchDims"] = kernel["PackBatchDims"] if kernel["PackBatchDims"] & 0x2 else 0
     tensorParametersA["PackedIndices"] = kernel["PackedC%uIndicesX"%self.tPA["tile01Idx"]]
     tensorParametersB["PackedIndices"] = kernel["PackedC%uIndicesX"%self.tPB["tile01Idx"]]
 
