@@ -433,14 +433,6 @@ validParameters = {
     # 2: each GSU group write to each own buffer and accumulate by another kernel
     "GlobalSplitUAlgorithm":      ["SingleBuffer", "MultipleBuffer"],
 
-    # When splitting up the summation between workgroups, there are two options for organizing which workgroup will do what
-    # If we begin with N workgroups and set GSU=4, there will now be 4N workgroups
-    # GSUWGMRR=False means workgroup 0,1,2,3 will all work on the same tile; =True means workgroup 0, N-1, 2N-1, 3N-1 will all work on the same tile
-    "GlobalSplitUWorkGroupMappingRoundRobin":     [ False, True ],
-    # GSUSARR=False means the 4 workgroups do whole chunks of the summation: k=0 -> K/4-1, k=K/4 -> 2K/4-1, k=2K/4 -> 3K/4-1, k=3K/4 -> 4K/4-1
-    # GSUSARR=True means the 4 workgroups round robin split up the chunks of the summation: k=0 -> DU-1, 4DU -> 5DU-1, ...; k=1DU -> 2DU-1, 5DU -> 6DU-1...; ...
-    "GlobalSplitUSummationAssignmentRoundRobin":  [ False, True ],
-
     # don't create a whole copy of the Unroll loop with loads removed - instead
     # use buffer limits to suppress global loads and ignore unnecessary ds_reads
     "SuppressNoLoadLoop":         [False, True],
@@ -1115,8 +1107,6 @@ defaultBenchmarkCommonParameters = [
     {"MagicDivAlg":               [ 2 ] },
     {"GlobalSplitU":              [ 1 ] },
     {"GlobalSplitUAlgorithm":     [ "SingleBuffer" ] },
-    {"GlobalSplitUSummationAssignmentRoundRobin": [ True ] },
-    {"GlobalSplitUWorkGroupMappingRoundRobin":    [ False ] },
     {"MacroTileShapeMin":         [ 1 ] },
     {"MacroTileShapeMax":         [ 64 ] },
     {"PackBatchDims":             [ 0 ] },

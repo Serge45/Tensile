@@ -2443,76 +2443,30 @@ class KernelWriterAssembly(KernelWriter):
     module = Code.Module("graWorkGroup")
     module.addComment0("graWorkGroup mapping")
     if kernel["GlobalSplitU"] > 1:
-      if kernel["GlobalSplitUWorkGroupMappingRoundRobin"]:
-        # gsuSumIdx = wg1 / nwg1
-        # wg1       = wg1 % nwg1
+      module.addComment("// GSU-not-WGMapRR :nwg1 = (size%s + MT%s - 1) / MT%s;" \
+          % (self.tileChar1, self.tileChar1, self.tileChar1))
 
-        # nwg1
-        nwg1 = self.vgprPool.checkOut(1, "nwg1", self.preventVgprOverflowDuringNewTile)
-        tmpVgpr = self.vgprPool.checkOutAligned(2, 2, "tmpVgpr", self.preventVgprOverflowDuringNewTile)
-        quotient = self.vgprPool.checkOut(1, "quotient", self.preventVgprOverflowDuringNewTile)
-        tmpSgpr = self.getTmpSgpr(1).idx()
-        module.addComment("// GSU-WGMapRR :nwg1 = (size%s + MT%s - 1) / MT%s;%s" \
-            % (self.tileChar1, self.tileChar1, self.tileChar1, self.endLine))
-        module.addInst("v_mov_b32", vgpr(nwg1), sgpr("SizesFree+1"), "")
-        module.addInst("s_mov_b32", sgpr(tmpSgpr), hex(kernel["MacroTile1"]-1), "")
-        module.addInst("_v_add_co_u32", vgpr(nwg1), self.vcc, sgpr(tmpSgpr), vgpr(nwg1), \
-            "%s = size1+MT1-1"%vgpr(nwg1))
-        module.addCode(vectorStaticDivide(quotient, nwg1, kernel["MacroTile1"], tmpVgpr, tmpSgpr))
-        self.vgprPool.checkIn(nwg1)
-        nwg1 = quotient
+      # gsuSumIdx = wg1 % GSU
+      # wg1       = wg1 / GSU
+      tmpSgpr = self.getTmpSgpr(3).idx() # needs 3
+      divisor = tmpSgpr+2
+      module.addInst("s_mov_b32", sgpr(divisor), sgpr("WorkGroup1"), \
+          "copying for divisor")
 
-        # wg1
-        wg1 = self.vgprPool.checkOut(1, "wg1", self.preventVgprOverflowDuringNewTile)
-        module.addInst("v_mov_b32", vgpr(wg1), sgpr("WorkGroup1"), "wg1")
+      #tmp = self.vgprPool.checkOut(1)
 
-        # gsuSumIdx = wg1 / nwg1
-        # wg1       = wg1 % nwg1
-        quotient = self.vgprPool.checkOut(1, "quotient", self.preventVgprOverflowDuringNewTile)
-        remainder = self.vgprPool.checkOut(1, "remainer", self.preventVgprOverflowDuringNewTile)
-        tmpVgpr1 = self.vgprPool.checkOut(1, "tmpVgpr1", self.preventVgprOverflowDuringNewTile)
-        dividend = wg1
-        divisor = nwg1
-        module.addInst("DYNAMIC_VECTOR_DIVIDE", \
-            quotient, remainder, dividend, divisor, \
-            tmpVgpr, tmpVgpr1, tmpSgpr, "")
+      #module.addInst("v_mov_b32", vgpr(tmp), sgpr("WorkGroup1"), "wg1")
+      #module.addCode(dump(vgpr(tmp))) # numerator
 
-        # move vgprs into sgprs
-        module.addInst("v_readfirstlane_b32", sgpr("GSUSumIdx"), \
-            vgpr(quotient), "")
-        module.addInst("v_readfirstlane_b32", sgpr("WorkGroup1"), \
-            vgpr(remainder), "")
-        self.vgprPool.checkIn(tmpVgpr)
-        self.vgprPool.checkIn(tmpVgpr1)
-        self.vgprPool.checkIn(nwg1)
-        self.vgprPool.checkIn(wg1)
-        self.vgprPool.checkIn(quotient)
-        self.vgprPool.checkIn(remainder)
-      else:
-        module.addComment("// GSU-not-WGMapRR :nwg1 = (size%s + MT%s - 1) / MT%s;" \
-            % (self.tileChar1, self.tileChar1, self.tileChar1))
+      module.addCode(scalarStaticDivideAndRemainder("WorkGroup1", "GSUSumIdx", \
+          divisor, kernel["GlobalSplitU"], tmpSgpr, 1))
 
-        # gsuSumIdx = wg1 % GSU
-        # wg1       = wg1 / GSU
-        tmpSgpr = self.getTmpSgpr(3).idx() # needs 3
-        divisor = tmpSgpr+2
-        module.addInst("s_mov_b32", sgpr(divisor), sgpr("WorkGroup1"), \
-            "copying for divisor")
-
-        #tmp = self.vgprPool.checkOut(1)
-
-        #module.addInst("v_mov_b32", vgpr(tmp), sgpr("WorkGroup1"), "wg1")
-        #module.addCode(dump(vgpr(tmp))) # numerator
-
-        module.addCode(scalarStaticDivideAndRemainder("WorkGroup1", "GSUSumIdx", \
-            divisor, kernel["GlobalSplitU"], tmpSgpr, 1))
-
-        #module.addInst("v_mov_b32", vgpr(tmp), sgpr("WorkGroup1"), "wg1")
-        #module.addCode(dump(vgpr(tmp))) # quotient
-        #module.addInst("v_mov_b32", vgpr(tmp), sgpr("GSUSumIdx"), "gsusumidx")
-        #module.addCode(dump(vgpr(tmp))) # remainder
-        #self.vgprPool.checkIn(tmp)
-        #module.addInst("s_endpgm", "")
+      #module.addInst("v_mov_b32", vgpr(tmp), sgpr("WorkGroup1"), "wg1")
+      #module.addCode(dump(vgpr(tmp))) # quotient
+      #module.addInst("v_mov_b32", vgpr(tmp), sgpr("GSUSumIdx"), "gsusumidx")
+      #module.addCode(dump(vgpr(tmp))) # remainder
+      #self.vgprPool.checkIn(tmp)
+      #module.addInst("s_endpgm", "")
 
     ########################################
     # Blocked rows or columns
@@ -2737,25 +2691,8 @@ class KernelWriterAssembly(KernelWriter):
       gsuOffset = self.vgprPool.checkOut(1, "gsuOffset", self.preventVgprOverflowDuringNewTile)
       module.addInst("v_mov_b32", vgpr(gsuOffset), sgpr("GSUSumIdx"), "=gsuSumIdx")
       tmpSgpr = self.getTmpSgpr(1).idx()
-      if kernel["GlobalSplitUSummationAssignmentRoundRobin"]:
-        # graUnrollAssignment += gsuSumIdx*DepthU
-        module.addCode(staticMultiply(vgpr(gsuOffset), vgpr(gsuOffset), kernel["DepthU"], sgpr(tmpSgpr)))
-      else:
-        # graUnrollAssignment += gsuSumIdx*(SizeU/GSU)
-        sizeU = self.vgprPool.checkOut(1, "sizeU", self.preventVgprOverflowDuringNewTile)
-        module.addInst("v_mov_b32", vgpr(sizeU), sgpr("SizesSum+0"), \
-            "=Size%s"%self.unrollChar)
-        quotient = self.vgprPool.checkOut(1, "quotient", self.preventVgprOverflowDuringNewTile)
-        dummy = self.vgprPool.checkOut(1, "dummy", self.preventVgprOverflowDuringNewTile)
-        tmpVgpr = self.vgprPool.checkOutAligned(2, 2, "tmpVgpr", self.preventVgprOverflowDuringNewTile)
-        module.addCode(vectorStaticDivideAndRemainder(quotient, dummy, sizeU, \
-            kernel["GlobalSplitU"], tmpVgpr, tmpSgpr))
-        self.vgprPool.checkIn(sizeU)
-        self.vgprPool.checkIn(dummy)
-        self.vgprPool.checkIn(tmpVgpr)
-        module.addInst("v_mul_lo_u32", vgpr(gsuOffset), vgpr(quotient), \
-            vgpr(gsuOffset), "gsuOffset=gsuSumIdx*(SizeU/GSU)")
-        self.vgprPool.checkIn(quotient)
+      # graUnrollAssignment += gsuSumIdx*DepthU
+      module.addCode(staticMultiply(vgpr(gsuOffset), vgpr(gsuOffset), kernel["DepthU"], sgpr(tmpSgpr)))
 
       module.addInst("_v_add_co_u32", vgpr(tP["gpr"]["uReg"]), self.vcc, \
           vgpr(gsuOffset), vgpr(tP["gpr"]["uReg"]), \
@@ -3277,9 +3214,6 @@ class KernelWriterAssembly(KernelWriter):
                    strideF, "tlu=0, scaled tile-offset by stride"))
 
       if kernel["GlobalSplitU"] > 1:
-        # Only GlobalSplitUSummationAssignmentRoundRobin supported for groOffsetInMacroTile - would need different math here for start:
-        assert(kernel["GlobalSplitUSummationAssignmentRoundRobin"])
-
         module.addModuleAsFlatItems(self.s_mul_u64_u32(sgpr(stmp+0), sgpr(stmp+1), kernel["DepthU"], sgpr("GSUSumIdx"), "gsuOffset = DepthU*bpe*GSUSumIdx"))
         if kernel["CheckDimOverflow"] >=2:
           module.addCode(self.getCmpAssert(self.asmAssert.eq, sgpr(stmp+1),0))
@@ -3478,8 +3412,7 @@ class KernelWriterAssembly(KernelWriter):
     #print (tc, ": loopIdx=", loopIdx, "dimIdx=", dimIdx, "strideIdx=", strideIdx)
 
     gsu = 1
-    if kernel["GlobalSplitU"] > 1 \
-        and kernel["GlobalSplitUSummationAssignmentRoundRobin"]:
+    if kernel["GlobalSplitU"] > 1:
       gsu = kernel["GlobalSplitU"]
 
     assert(self.unrollIdx == kernel["ProblemType"]["NumIndicesSummation"]-1)
