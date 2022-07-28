@@ -1570,8 +1570,6 @@ class KernelWriterAssembly(KernelWriter):
     if self.db["ForceEdgeStores"] : print ("\n***WARNING: ForceEdgeStores enabled, may impact performance\n")
     if self.db["AssertNoEdge"] : print ("\n***WARNING: AssertNoEdge enabled, may impact functionality and performance\n")
     if self.db["PrintRP"] : print ("\n***WARNING: PrintRP enabled, may generate verbose output\n")
-    if kernel["CheckTensorDimAsserts"] : print ("\n***WARNING: CheckTensorDimAsserts enabled, may impact performance\n")
-    if kernel["CheckDimOverflow"] : print ("\n***WARNING: CheckDimOverflow enabled, may impact performance\n")
 
   ##############################################################################
   def functionSignature(self, kernel ):
@@ -2337,14 +2335,6 @@ class KernelWriterAssembly(KernelWriter):
     if self.db["InitLds"]:
       module.addCode(self.initLds(kernel, self.initLdsValue))
 
-    if kernel["CheckTensorDimAsserts"]:
-      module.addCode(self.getMultipleB32Assert(sgpr("SizesSum+%u"%(self.numSgprSizesSum-1)),
-                  kernel["AssertSummationElementMultiple"], 0x1001))
-      module.addCode(self.getMultipleB32Assert(sgpr("SizesFree+0"),
-                  kernel["AssertFree0ElementMultiple"], 0x1002))
-      module.addCode(self.getMultipleB32Assert(sgpr("SizesFree+1"),
-                  kernel["AssertFree1ElementMultiple"], 0x1003))
-
     return module
 
   ##############################################################################
@@ -2879,12 +2869,6 @@ class KernelWriterAssembly(KernelWriter):
       module.addInst("v_mov_b32", vgpr(edge), sgpr(tmpSgpr), \
           "edge vgpr = Size%s-%u"%(tP["tileChar"], margin) )
 
-    if kernel["CheckDimOverflow"]:
-      # if tensor is really skinny (SizesFree is less then glvw) then shifting fails-
-      # can detect here if the computed edge after subtracting marging is <0
-      module.addCode(self.getCmpAssert(self.asmAssert.ge_i32, vgpr(edge), 0))
-    #module.addCode(self.getCmpAssert(self.asmAssert.ne, sgpr("WorkGroup0"),1))
-
     # shift offsets
     vSrc = tP["vgprTileOffsets"]
     if self.useGlobalReadTileVgpr:
@@ -3164,8 +3148,6 @@ class KernelWriterAssembly(KernelWriter):
 
       # This is guaranteed to fit in 32-bit since the WG*MT is a number of elements in some unsigned direction:
       module.addModuleAsFlatItems(self.s_mul_u64_u32(sgpr(tileStart+0), sgpr(tileStart+1), sgpr(tP["wg"]), kernel[tP["mt"]], "WorkGroup[01] * MT"))
-      if kernel["CheckDimOverflow"] >=2:
-        module.addCode(self.getCmpAssert(self.asmAssert.eq, sgpr(tileStart+1),0))
       strideF = self.strideRef(tc, tP['tileIdx'])
       if not self.isConstUnitStride(strideF):
         module.addModuleAsFlatItems(self.s_mul_u64_u32(sgpr(tileStart), sgpr(tileStart+1), sgpr(tileStart+0), \
@@ -3173,8 +3155,6 @@ class KernelWriterAssembly(KernelWriter):
 
       if kernel["GlobalSplitU"] > 1:
         module.addModuleAsFlatItems(self.s_mul_u64_u32(sgpr(stmp+0), sgpr(stmp+1), kernel["DepthU"], sgpr("GSUSumIdx"), "gsuOffset = DepthU*bpe*GSUSumIdx"))
-        if kernel["CheckDimOverflow"] >=2:
-          module.addCode(self.getCmpAssert(self.asmAssert.eq, sgpr(stmp+1),0))
         unrollSummation = [ i for i in tP["ia"] if i in kernel["ProblemType"]["IndicesSummation"] ]
         stride = self.strideRef(tc,unrollSummation[-1])
         if tP["tlu"] and not self.isConstUnitStride(stride):
@@ -3276,31 +3256,6 @@ class KernelWriterAssembly(KernelWriter):
 
     #if tP["isB"]:
     #  module.addCode(self.getCmpAssert(self.asmAssert.ne, sgpr("WorkGroup1"), 0xA))
-
-    if kernel["CheckDimOverflow"]>=2:
-      # double-check to make sure the SRD limit is inside the allowed tensor:
-      #   - compute size of tensor in elements (including all dimensions)
-      #   - subtract the SRD base and SRD buffer limit
-      #   - Make sure the 64bit result is >0
-      module.addInst("s_lshl_b64", sgpr(stmp,2), sgpr("Tensor2dSize%s"%tc,2), log2(bpe), "tensor size in bytes")
-      module.addInst("s_add_u32",  sgpr(stmp+0), sgpr(stmp+0), sgpr("Address%s+0"%tc), "add start ptr to compute tensor%s bot-right"%tc)
-      module.addInst("s_addc_u32", sgpr(stmp+1), sgpr(stmp+1), sgpr("Address%s+1"%tc), "add start ptr to compute tensor%s bot-right"%tc)
-      module.addInst("s_sub_u32",  sgpr(stmp+0), sgpr(stmp+0), sgpr("Srd%s+0"%tc), "sub SRD base")
-      module.addInst("s_subb_u32", sgpr(stmp+1), sgpr(stmp+1), sgpr("Srd%s+1"%tc), "sub SRD base")
-      if self.use64bShadowLimit:
-        module.addInst("s_sub_u32", sgpr(stmp+0), sgpr(stmp+0), sgpr("ShadowLimit%s+0"%tc), "sub buffer size")
-        module.addInst("s_subb_u32", sgpr(stmp+1), sgpr(stmp+1), sgpr("ShadowLimit%s+1"%tc), "sub buffer size")
-      else:
-        module.addInst("s_sub_u32",  sgpr(stmp+0), sgpr(stmp+0), sgpr("Srd%s+2"%tc), "sub buffer limit")
-
-      module.addCode(self.getCmpAssert(self.asmAssert.eq, sgpr(stmp+1), 0))  # must be 0 or we are way OOB
-      module.addCode(self.getCmpAssert(self.asmAssert.ge_u32, sgpr(stmp+0), 0)) # diff greater than zero
-      if 0 and tP["isB"]:
-        t = self.vgprPool.checkOut(1, "t", self.preventVgprOverflowDuringNewTile)
-        module.addInst("s_add_u32", sgpr(stmp+0), sgpr("WorkGroup1"), sgpr("WorkGroup2"), "bozo, debug")
-        module.addInst("v_mov_b32", vgpr(t), 0x54, "")
-        module.addCode(self.getCmpAssert(self.asmAssert.ne, sgpr(stmp+0), vgpr(t) ))
-        self.vgprPool.checkIn(t)
 
     return module
 

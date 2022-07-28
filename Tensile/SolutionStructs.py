@@ -1782,13 +1782,6 @@ class Solution(collections.abc.Mapping):
     state["WorkGroupMapping" ] = abs(state["WorkGroupMapping"])
 
     problemType = state["ProblemType"]
-    if not problemType["UseInitialStridesAB"]:
-      for (tc) in ('A','B'):
-        state["AssertStride%sEqual"%tc][0]=1
-
-    if not problemType["UseInitialStridesCD"]:
-      for (tc) in ('C','D'):
-        state["AssertStride%sEqual"%tc][0]=1
 
     for (tc,batchMask) in (('A', 0x1), ('B', 0x2)):
       freeDims = [i for i in problemType["IndexAssignments%s"%tc] if i in problemType["IndicesFree"]]
@@ -2298,28 +2291,6 @@ class Solution(collections.abc.Mapping):
       else:
         pos = problemType["IndexAssignments%s"%tc].index(problemType["IndexUnroll"])
 
-      unitStride = False
-      stride = -1
-      stride = state["AssertStride%sEqual"%tc].get(pos,-1)
-      if stride==1:
-        unitStride = True
-      if not unitStride and state["GlobalLoadVectorWidth%s"%tc] != 1:
-        reject(state,
-            "Non-unit stride(%s) for coalesced dimension (index=%d) requires GlobalLoadVectorWidth%s==1" \
-                % ("TBD" if stride==-1 else str(stride), \
-                   problemType["IndexAssignments%s"%tc][pos], tc))
-
-      for p in state["AssertStride%sEqual"%tc].keys():
-        if p>len(problemType["IndexAssignments%s"%tc]):
-          raise RuntimeError ("AssertStride%sEqual index position %d is > len(IndexAssignments%s)" % \
-                                tc, p, tc)
-
-    maxIndex = max(problemType["IndexAssignmentsA"] + problemType["IndexAssignmentsB"])
-    for p in state["AssertSizeEqual"]:
-      if p>maxIndex:
-        raise RuntimeError ("AssertSize index position=%d is > maxIndex=%d" % (p, maxIndex))
-
-
     # Some of these might become 0?
     if 0:
       print("info: ", pvar(state, "LVCA"), pvar(state, "LVPA"), \
@@ -2633,15 +2604,8 @@ class Solution(collections.abc.Mapping):
         return
 
     if state["AtomicAddC"]:
-      if not state["ProblemType"]["DataType"].isDouble():
-        reject(state, "AtomicAddC currently only available for dgemm")
-        return
-      if state["AssertBetaValue"] != 1:
-        reject(state, "AtomicAddC requires AssertBetaValue = 1")
-        return
-      if not state["AssertCEqualsD"]:
-        reject(state, "AtomicAddC requires AssertCEqualsD")
-        return
+      reject(state, "AtomicAddC currently disabled")
+      return
 
     #check not support cases and calculate lds resources
     if state["StoreRemapVectorWidth"]:
@@ -2862,17 +2826,6 @@ class Solution(collections.abc.Mapping):
             reject(state, "GlobalLoadVectorWidthB %u must be == VectorWidth %u or == 1" % \
                     (state["GlobalLoadVectorWidthB"], state["VectorWidth"]))
 
-    # these work everywhere, no special restrictions
-    state["AssertMinApproxSize"] = 0
-
-    if state["KernelLanguage"] == "Assembly":
-      if state["VectorWidth"] > 1:
-        # VW>1 kernels require dims>1
-        state["AssertMinApproxSize"] = 3
-    elif state["VectorWidth"] > 1:
-      # VW>1 kernels require dims>1
-      state["AssertMinApproxSize"] = 2
-
     # Use SGPR to store an offset from GlobalReadOffsetA+0.
     # (as opposed to using dedicated VGPR for each GRO
     # Requires preciseBounds check since we rely on the buffer bounds check, not
@@ -2915,13 +2868,6 @@ class Solution(collections.abc.Mapping):
               state["_VectorStore"] = 0
             else:
               reject(state, "packedC0 Assembly requires AF0EM>=VectorWidth or not VectorStore (for stores)")
-
-    if state["AssertStrideCEqual"].get(0,-1) != 1 or state["AssertStrideDEqual"].get(0,-1) != 1:
-      # Disable vector stores if not allowed:
-      if state["VectorStore"] <= 0:
-        state["_VectorStore"] = 0
-      else:
-        reject(state, "UseInitialStridesCD requires not VectorStore since store locations not adjacent")
 
     state["AssignedDerivedParameters"] = True
 

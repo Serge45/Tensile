@@ -112,12 +112,7 @@ custom.config:
   ISA: [9, 0, 8]
   AssertFree0ElementMultiple: 8
   AssertFree1ElementMultiple: 1
-  AssertMinApproxSize: 3
-  AssertStrideAEqual: {0: 1}
-  AssertStrideCEqual: {0: 1}
   AssertSummationElementMultiple: 8
-  AssertSizeMultiple: {0: 64, 1: 128, 3: 64}
-  AssertSizeGreaterThan: {3: 191}
 
 amdhsa.version:
   - 1

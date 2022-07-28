@@ -856,7 +856,6 @@ def writeSolutionAndExactTable(scheduleName, deviceNames, schedProbName, problem
         solution["AssertSummationElementMultiple"], \
         solution["AssertFree0ElementMultiple"], \
         solution["AssertFree1ElementMultiple"], \
-        solution["AssertMinApproxSize"], \
         False, \
         "," if i < len(solutionsForSchedule)-1 else "", \
         i)

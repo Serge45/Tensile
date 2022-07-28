@@ -1030,7 +1030,6 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
           solution["AssertSummationElementMultiple"],
           solution["AssertFree0ElementMultiple"],
           solution["AssertFree1ElementMultiple"],
-          solution["AssertMinApproxSize"],
           "false"
           )
       if i < len(solutions)-1:

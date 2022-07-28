@@ -220,11 +220,6 @@ def getSolutionTag(solution):
     else:
         tagTuple = tagTuple + (MfmaTag.VALU,)
 
-    tagTuple = tagTuple + (strToScalarValueTag(AlphaValueTag, solution.get("AssertAlphaValue", "Any")),)
-    tagTuple = tagTuple + (strToScalarValueTag(BetaValueTag, solution.get("AssertBetaValue",  "Any")),)
-
-    tagTuple = tagTuple + (CEqualsDTag.C_EQ_D if solution.get("AssertCEqualsD", False) else CEqualsDTag.C_NEQ_D ,)
-
     return tagTuple
 
 def findSolutionWithIndex(solutionData, solIndex):

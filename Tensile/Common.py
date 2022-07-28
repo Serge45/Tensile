@@ -609,51 +609,6 @@ validParameters = {
     # 1 indicates no assertion (since all sizes are multiples of 1)
     "AssertFree1ElementMultiple" : [1,2,4,8],
 
-    # Some kernels only work for certain sizes, see ProblemProperties in TensileTypes for exact defs
-    "AssertMinApproxSize" : [0,1,2,3],
-
-
-    # Assertions/Predicates that require stride to be specified value.
-    # Dictionary of pairs of {position:constValue}
-    # Unlike SetConstStride*, these use a position in the IndexAssignments* field:
-    #   EX: "{2:0}"  means IndexAssignmentsB[2] must be 0 to run the solution.
-    # Use this syntax to specify multiple Fork values in a YAML config file.
-
-    #- AssertStrideAEqual:
-    #  - {5: 2, 6: 2} # these are two AssertStrideAEqual predicates for the same solution.
-    #  - {5: 2}       # this is a second solution generated with a single predicate.
-
-    # Like other assertions, these are used when kernel is generated and checked before running kernel.
-    "AssertStrideAEqual":  -1,
-
-    "AssertStrideBEqual":  -1,
-
-    "AssertStrideCEqual":  -1,
-    "AssertStrideDEqual":  -1,
-
-    # Assertions that require stride to be specified value.
-    # Dictionary of pairs of {index, constValue}.
-    # Index is a member of the global index assignments.
-    "AssertSizeEqual":       -1,
-    "AssertSizeGreaterThan": -1,
-    "AssertSizeLessThan":    -1,
-    "AssertSizeMultiple":    -1,
-
-    #Assert values for alpha and beta
-    "AssertBetaValue":       [False, 1, -1],
-    "AssertAlphaValue":      [False, 1, -1],
-
-    #Assert C==D
-    "AssertCEqualsD": [False, True],
-
-    # Generate code inside kernel to check Assertions on Tensor dimensions
-    "CheckTensorDimAsserts":               [False, True],
-
-    # Generate code inside kernel to check several dimension overflow cases, in particular around use of 32-bit calcs
-    # 0 = no check, 1=checks for cases that should be avoided through assertions and kernel selection,
-    # 2=checks for cases that should never happen
-    "CheckDimOverflow":               [0,1,2],
-
     # Stagger the start summation position of the tiles.
     # Elements from the summation dimension are loaded at offsets rather than all starting at 0.
     # StaggerU is the max 'clicks' of StaggerUStride bytes where each wg starts ; see StaggerUMapping
@@ -1047,20 +1002,6 @@ defaultBenchmarkCommonParameters = [
     {"AssertSummationElementMultiple": [ 1 ] },
     {"AssertFree0ElementMultiple": [ 1 ] },
     {"AssertFree1ElementMultiple": [ 1 ] },
-    {"AssertMinApproxSize":        [ -1 ] },
-    {"AssertStrideAEqual":        [ {} ] },
-    {"AssertStrideBEqual":        [ {} ] },
-    {"AssertStrideCEqual":        [ {} ] },
-    {"AssertStrideDEqual":        [ {} ] },
-    {"AssertSizeEqual":           [ {} ] },
-    {"AssertSizeGreaterThan":     [ {} ] },
-    {"AssertSizeMultiple":        [ {} ] },
-    {"AssertSizeLessThan":        [ {} ] },
-    {"AssertAlphaValue":          [ False ]},
-    {"AssertBetaValue":           [ False ]},
-    {"AssertCEqualsD":            [ False ]},
-    {"CheckTensorDimAsserts"      : [ False ] },
-    {"CheckDimOverflow"           : [ 0 ] },
 
     {"StaggerU":                  [ 32 ] },   # recommend [0,32]
     {"StaggerUStride":            [ 256 ] },  # recommend 256 for V10,V20
