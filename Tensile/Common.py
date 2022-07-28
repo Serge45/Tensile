@@ -890,11 +890,6 @@ validParameters = {
     # -1 : Set StoreVectorWidth = VectorWidth
     "StoreVectorWidth":           [ -1, 1, 2, 3, 4, 6, 8 ],
 
-    # place upper and lower limits on the skinny-ness of macro tiles; shape=1 means square tile, like 64x64. shape=4 means 4x64 or 64x4 or 128x8...
-    # these will just mark some kernels as invalid so that fewer kernels will be checked
-    "MacroTileShapeMin":          list(range(1, 256+1)),
-    "MacroTileShapeMax":          list(range(1, 256+1)),
-
     # when loading all the data from global into lds requires multiple load instructions, these parameters govern which
     # loads will pull which rectangle of data from global into lds
     # NLC=1 means one load along the coalesced dimension, which results in the most coalescing possible
@@ -1073,8 +1068,6 @@ defaultBenchmarkCommonParameters = [
     {"MagicDivAlg":               [ 2 ] },
     {"GlobalSplitU":              [ 1 ] },
     {"GlobalSplitUAlgorithm":     [ "SingleBuffer" ] },
-    {"MacroTileShapeMin":         [ 1 ] },
-    {"MacroTileShapeMax":         [ 64 ] },
     {"Use64bShadowLimit":         [ 1 ] },
     {"NumLoadsCoalescedA":        [ 1 ] },
     {"NumLoadsCoalescedB":        [ 1 ] },

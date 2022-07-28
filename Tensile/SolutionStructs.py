@@ -1020,16 +1020,6 @@ class Solution(collections.abc.Mapping):
           or state["MacroTile1"] != state["MacroTile"][1]:
         reject(state, "MacroTile mismatch")
 
-    if state["Valid"] and "MacroTileShapeMax" in state \
-        and "MacroTileShapeMin" in state:
-      macroTileShape = max(state["MacroTile0"]//state["MacroTile1"], \
-          state["MacroTile1"]//state["MacroTile0"])
-      if macroTileShape > state["MacroTileShapeMax"] \
-          or macroTileShape < state["MacroTileShapeMin"]:
-        reject(state, "rejecting MacroTile Shape %u:%u for Min:Max %u:%u" \
-            % (state["MacroTile0"], state["MacroTile1"], \
-            state["MacroTileShapeMin"], state["MacroTileShapeMax"]))
-
     # done
     state["AssignedProblemIndependentDerivedParameters"] = True
 
