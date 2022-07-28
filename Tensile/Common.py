@@ -357,8 +357,6 @@ validGEMMTypes = [ ('H','H','H'), ('S','S','S'), ('D','D','D'), ('C','C','C'), (
 HPATypes = [ ('H','S','S'), ('H','H','S'), ('B','B','S'), ('B','S','S'), ('I8','I','I'), ('4xi8','I','I')]
 
 validParameters = {
-    "LoopTail":                   [ False, True ], # tail loop handles non multiples of unrolled summation loop
-
     # original global read to lds is interlace, [w0,w1,w2,w3,w0,w1,w2,w3,w0,w1,w2,w3,w0,w1,w2,w3]
     # when WaveSeparateGlobalRead is enabled, LDS is divided to number of waves part.
     # each wave load a block memory to lds,     [w0,w0,w0,w0,w1,w1,w1,w1,w2,w2,w2,w2,w3,w3,w3,w3]
@@ -1044,7 +1042,6 @@ validParameters = {
 
 # same parameter for all solution b/c depends only on compiler
 defaultBenchmarkCommonParameters = [
-    {"LoopTail":                  [ True ] },
     {"EdgeType":                  [ "Branch" ] },
     {"InnerUnroll":               [ 1 ] },
     {"KernelLanguage":            [ "Assembly" ] },

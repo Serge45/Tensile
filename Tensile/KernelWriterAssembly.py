@@ -1266,9 +1266,7 @@ class KernelWriterAssembly(KernelWriter):
     vgprIdx += 1 # for vgpr serial id
 
     # tmp vgprs
-    #minVgprTmp = 1
-    #if kernel["LoopTail"]:
-    #  minVgprTmp += 4
+    #minVgprTmp += 4
     #if globalParameters["DebugKernel"]:
     #  minVgprTmp += 2
     #vgprIdx += minVgprTmp
@@ -1569,7 +1567,6 @@ class KernelWriterAssembly(KernelWriter):
     if self.db["InitVgpr"] : print ("\n***WARNING: InitVgpr enabled, may impact performance\n")
     if self.db["ConservativeWaitCnt"] : print ("\n***WARNING: ConservativeWaitCnt enabled, may impact performance\n")
     if self.do["KeepDirectToLdsAlloc"] : print ("\n***WARNING: KeepDirectToLdsAlloc enabled, may impact performance\n")
-    if not kernel["LoopTail"] : print ("\n***WARNING: LoopTail disabled, kernel may not function correctly for all inputs\n")
     if self.db["CheckValue1A"] : print ("\n***WARNING: CheckValue1A enabled, may impact performance\n")
     if self.db["CheckValue1B"] : print ("\n***WARNING: CheckValue1B enabled, may impact performance\n")
     if self.db["CheckValueC"] : print ("\n***WARNING: CheckValueC enabled, may impact performance\n")

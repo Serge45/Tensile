@@ -314,7 +314,6 @@ linenos
 BenchmarkProblems:
 - - {Batched: true, DataType: s, OperationType: GEMM, TransposeA: false, TransposeB: false, UseBeta: true}
   - BenchmarkCommonParameters:
-    - LoopTail: [true]
     - KernelLanguage: [Assembly]
     - EdgeType: [ShiftPtr]
     BenchmarkFinalParameters:
@@ -1394,7 +1393,6 @@ Any library will contain a large set of parameters that are common to all the ke
  LocalReadVectorWidth & LRVW \\
  LocalWritePerMfma & LWPM \\
  LoopDoWhile & LDW \\
- LoopTail & LT \\
  MACInstruction & MAC \\
  MacroTile & MT \\
  MacroTileShapeMax & MTSM \\

@@ -307,7 +307,6 @@ def generateEmptyBenchmarkGroup():
 def generateDefaultScheme():
     scheme={"EdgeType": ["ShiftPtr"],
             "KernelLanguage": ["Assembly"],
-            "LoopTail": [True],
             "WorkGroupMapping": [1, 8],
             "DepthU": [16],
             "VectorWidth": [-1],

@@ -234,7 +234,6 @@ def generateBenchmarkGroupFromScheme(scheme,tileAware=False):
 def generateDefaultScheme():
     scheme={"EdgeType": ["ShiftPtr"],
             "KernelLanguage": ["Assembly"],
-            "LoopTail": [True],
             "WorkGroupMapping": [1,8],
             "DepthU": [8,16,24,32],
             "VectorWidth": [-1],
@@ -248,7 +247,6 @@ def generateDefaultScheme():
 def generateMfmaScheme():
     scheme={"EdgeType": ["ShiftPtr"],
             "KernelLanguage": ["Assembly"],
-            "LoopTail": [True],
             "WorkGroupMapping": [1,8],
             "DepthU": [16,24,32],
             "VectorWidth": [2,4],
