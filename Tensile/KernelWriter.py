@@ -2931,20 +2931,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
       kernel["MacroTileA"] = kernel["MacroTile1"]
     """
 
-    ########################################
-    # derrive global-read-coalesce-group from local in config
-    """
-    if kernel["ProblemType"]["TLUA"]:
-      self.globalReadCoalesceGroupA = kernel["LocalWriteCoalesceGroupA"]
-    else:
-      self.globalReadCoalesceGroupA = not kernel["LocalWriteCoalesceGroupA"]
-    if kernel["ProblemType"]["TLUB"]:
-      self.globalReadCoalesceGroupB = kernel["LocalWriteCoalesceGroupB"]
-    else:
-      self.globalReadCoalesceGroupB = not kernel["LocalWriteCoalesceGroupB"]
-    """
-    self.globalReadCoalesceGroupA = kernel["GlobalReadCoalesceGroupA"]
-    self.globalReadCoalesceGroupB = kernel["GlobalReadCoalesceGroupB"]
     """
     # original parameters
     NumLoadsCoalesced -> NumLoadsPerpendicular
@@ -3038,62 +3024,35 @@ class KernelWriter(metaclass=abc.ABCMeta):
     if kernel["ProblemType"]["TLUA"]: # NT no transpose
       self.numReadsTileA = kernel["NumLoadsCoalescedA"]
       self.numReadsUnrollA = kernel["NumLoadsPerpendicularA"]
-      if kernel["GlobalReadCoalesceVectorA"]: # read vectors
-        self.readTileDimComponentsA = False # Vector
-        self.readTileDimVectorA = True # Vector
-        self.readUnrollDimComponentsA = False # Scalar
-        self.readUnrollDimVectorA = False # Scalar
-        self.numReadsTileVecCompA = vwa
-        self.numReadsUnrollVecCompA = 1
-      else: # read components, write components
-        self.readTileDimComponentsA = False # Scalar
-        self.readTileDimVectorA = False # Scalar
-        self.readUnrollDimComponentsA = kernel["VectorWidth"] > 1 # Components
-        self.readUnrollDimVectorA = False # Components
-        self.numReadsTileVecCompA = 1
-        self.numReadsUnrollVecCompA = vwa
+      self.readTileDimComponentsA = False # Vector
+      self.readTileDimVectorA = True # Vector
+      self.readUnrollDimComponentsA = False # Scalar
+      self.readUnrollDimVectorA = False # Scalar
+      self.numReadsTileVecCompA = vwa
+      self.numReadsUnrollVecCompA = 1
     else: # TN yes transpose
       self.numReadsTileA = kernel["NumLoadsPerpendicularA"]
       self.numReadsUnrollA = kernel["NumLoadsCoalescedA"]
-      if kernel["GlobalReadCoalesceVectorA"]: # read vector
-        self.readTileDimComponentsA = False # Scalar
-        self.readTileDimVectorA = False # Scalar
-        self.readUnrollDimComponentsA = False # Vector
-        self.readUnrollDimVectorA = True # Vector
-        self.numReadsUnrollVecCompA = vwa
-        self.numReadsTileVecCompA = 1
-      else: # read components, write vectors
-        self.readTileDimComponentsA = kernel["VectorWidth"] > 1 # Components
-        self.readTileDimVectorA = False # Components
-        self.readUnrollDimComponentsA = False # Scalar
-        self.readUnrollDimVectorA = False # Scalar
-        # NEW
-        self.numReadsUnrollVecCompA = 1
-        self.numReadsTileVecCompA = vwa
+      self.readTileDimComponentsA = False # Scalar
+      self.readTileDimVectorA = False # Scalar
+      self.readUnrollDimComponentsA = False # Vector
+      self.readUnrollDimVectorA = True # Vector
+      self.numReadsUnrollVecCompA = vwa
+      self.numReadsTileVecCompA = 1
 
     ########################################
     # write vectors or vector components
     ########################################
     if kernel["ProblemType"]["TLUA"] != kernel["UnrollMajorLDSA"]: # NT no transpose
       self.numWritesCoalA = kernel["NumLoadsCoalescedA"]
-      if kernel["GlobalReadCoalesceVectorA"]: # read vectors, write vectors
-        self.writeUnrollDimComponentsA = False # Scalar
-        self.writeTileDimComponentsA = False # Vector
-        writeCoal = True
-      else: # read components, write components
-        self.writeTileDimComponentsA = False # Scalar
-        self.writeUnrollDimComponentsA = kernel["GlobalReadVectorWidth"] > 1 # Components
-        writeCoal = False
+      self.writeUnrollDimComponentsA = False # Scalar
+      self.writeTileDimComponentsA = False # Vector
+      writeCoal = True
     else: # TN yes transpose
       self.numWritesCoalA = kernel["NumLoadsPerpendicularA"]
-      if kernel["GlobalReadCoalesceVectorA"]: # read vector, write components
-        self.writeUnrollDimComponentsA = False # Scalar
-        self.writeTileDimComponentsA = kernel["GlobalReadVectorWidth"] > 1 # Components
-        writeCoal = False
-      else: # read components, write vectors
-        self.writeTileDimComponentsA = False # Vector
-        self.writeUnrollDimComponentsA = False # Scalar
-        writeCoal = True
+      self.writeUnrollDimComponentsA = False # Scalar
+      self.writeTileDimComponentsA = kernel["GlobalReadVectorWidth"] > 1 # Components
+      writeCoal = False
 
     # writeCoal indicates writes should be done in the coal dim
     # else in perp
@@ -3137,67 +3096,35 @@ class KernelWriter(metaclass=abc.ABCMeta):
     if kernel["ProblemType"]["TLUB"]: # NT no transpose
       self.numReadsTileB = kernel["NumLoadsCoalescedB"]
       self.numReadsUnrollB = kernel["NumLoadsPerpendicularB"]
-      if kernel["GlobalReadCoalesceVectorB"]:
-        self.readTileDimComponentsB = False # Vector
-        self.readTileDimVectorB = True # Vector
-        self.readUnrollDimComponentsB = False # Scalar
-        self.readUnrollDimVectorB = False # Scalar
-        self.numReadsTileVecCompB = vwb
-        self.numReadsUnrollVecCompB = 1
-      else:
-        self.readTileDimComponentsB = False # Scalar
-        self.readTileDimVectorB = False # Scalar
-        self.readUnrollDimComponentsB = kernel["VectorWidth"] > 1 # Components
-        self.readUnrollDimVectorB = False # Components
-        # NEW
-        self.numReadsTileVecCompB = 1
-        self.numReadsUnrollVecCompB = vwb
+      self.readTileDimComponentsB = False # Vector
+      self.readTileDimVectorB = True # Vector
+      self.readUnrollDimComponentsB = False # Scalar
+      self.readUnrollDimVectorB = False # Scalar
+      self.numReadsTileVecCompB = vwb
+      self.numReadsUnrollVecCompB = 1
     else: # TN yes transpose
       self.numReadsTileB = kernel["NumLoadsPerpendicularB"]
       self.numReadsUnrollB = kernel["NumLoadsCoalescedB"]
-      if kernel["GlobalReadCoalesceVectorB"]:
-        self.readTileDimComponentsB = False # Scalar
-        self.readTileDimVectorB = False # Scalar
-        self.readUnrollDimComponentsB = False # Vector
-        self.readUnrollDimVectorB = True # Vector
-        self.numReadsUnrollVecCompB = vwb
-        self.numReadsTileVecCompB = 1
-      else:
-        self.readTileDimComponentsB = kernel["VectorWidth"] > 1 # Components
-        self.readTileDimVectorB = False # Components
-        self.readUnrollDimComponentsB = False # Scalar
-        self.readUnrollDimVectorB = False # Scalar
-        # NEW
-        self.numReadsUnrollVecCompB = 1
-        self.numReadsTileVecCompB = vwb
+      self.readTileDimComponentsB = False # Scalar
+      self.readTileDimVectorB = False # Scalar
+      self.readUnrollDimComponentsB = False # Vector
+      self.readUnrollDimVectorB = True # Vector
+      self.numReadsUnrollVecCompB = vwb
+      self.numReadsTileVecCompB = 1
 
     ####################################
     # write vectors or vector components b
     ####################################
     if kernel["ProblemType"]["TLUB"] != kernel["UnrollMajorLDSB"]: # NT no transpose
       self.numWritesCoalB = kernel["NumLoadsCoalescedB"]
-      if kernel["GlobalReadCoalesceVectorB"]:
-        self.writeUnrollDimComponentsB = False # Vector
-        self.writeTileDimComponentsB = False # Vector
-        writeCoal = True
-      else:
-        self.writeTileDimComponentsB = False # Scalar
-        self.writeUnrollDimComponentsB = kernel["GlobalReadVectorWidth"] > 1 # Components
-        # NEW
-        self.numWritesCoalVecCompB = 1
-        self.numWritesPerpVecCompB = vwb
+      self.writeUnrollDimComponentsB = False # Vector
+      self.writeTileDimComponentsB = False # Vector
+      writeCoal = True
     else: # TN yes transpose
       self.numWritesCoalB = kernel["NumLoadsPerpendicularB"]
-      if kernel["GlobalReadCoalesceVectorB"]:
-        self.writeUnrollDimComponentsB = False
-        self.writeTileDimComponentsB = kernel["GlobalReadVectorWidth"] > 1 # Components
-        writeCoal = False
-      else:
-        self.writeTileDimComponentsB = False # Vector
-        self.writeUnrollDimComponentsB = False # Scalar
-        # NEW
-        self.numWritesCoalVecCompB = vwb
-        self.numWritesPerpVecCompB = 1
+      self.writeUnrollDimComponentsB = False
+      self.writeTileDimComponentsB = kernel["GlobalReadVectorWidth"] > 1 # Components
+      writeCoal = False
 
     # writeCoal indicates writes should be done in the coal dim
     # else in perp
@@ -3349,8 +3276,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
       tP["sg"] = "SubGroup%u" % (tP["tile01Idx"])
       tP["tt"] = "ThreadTile%u" % (tP["tile01Idx"])
       tP["mt"] = "MacroTile%u" % (tP["tile01Idx"])
-      tP["grcg"] = self.globalReadCoalesceGroupA            # global reads are coalesced along threads
-      tP["grcv"] = kernel["GlobalReadCoalesceVectorA"]      # global reads are vector reads, and lds writes will be components if transposing
       tP["tlu"] = kernel["ProblemType"]["TLUA"]             # thread stride is less than unroll stride, i.e., not transposing matrix
       tP["ia"] = kernel["ProblemType"]["IndexAssignmentsA"] # array of index assignments
       #tP["nlc"] = kernel["NumLoadsCoalescedA"]
@@ -3405,8 +3330,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
       tP["sg"] = "SubGroup%u" % (tP["tile01Idx"])
       tP["tt"] = "ThreadTile%u" % (tP["tile01Idx"])
       tP["mt"] = "MacroTile%u" % (tP["tile01Idx"])
-      tP["grcg"] = self.globalReadCoalesceGroupB
-      tP["grcv"] = kernel["GlobalReadCoalesceVectorB"]
       tP["tlu"] = kernel["ProblemType"]["TLUB"]
       tP["ia"] = kernel["ProblemType"]["IndexAssignmentsB"]
       # NEW

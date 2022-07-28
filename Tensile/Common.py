@@ -359,28 +359,6 @@ HPATypes = [ ('H','S','S'), ('H','H','S'), ('B','B','S'), ('B','S','S'), ('I8','
 validParameters = {
     "LoopTail":                   [ False, True ], # tail loop handles non multiples of unrolled summation loop
 
-    # threads load elements from global into registers, then write from registers to LDS
-    # these options affect those read/write patterns
-    # coalesce-group=True  means adjacent threads will     read adjacent addresses; if the data needs to be transposed then adjacent threads will NOT write adjacent elements to LDS.
-    # coalesce-group=False means adjacent threads will NOT read adjacent addresses; if the data needs to be transposed then adjacent threads will     write adjacent elements to LDS.
-    # this parameter really only matters for transposing
-    # =False means the L1 cache will do the transposing work and it is quite fast; then data is written coalesced (no bank conflicts) to LDS.
-    # =True means the transpose will happen while writing to LDS, this usually has bank conflicts, but it appears the throughput is still fast enough to not slow the VALUs down.
-    # it appears that the L1 cache can still achieve quite a bit of performance for GRCG=False, but overall it's usually faster to read coalesced
-    "GlobalReadCoalesceGroupA":   [ False, True ],
-    "GlobalReadCoalesceGroupB":   [ False, True ],
-
-    # for transposes, this option governs how short-vectors should be read from global and written to lds
-    # it is impossible to transpose data while operating on short-vectors for GlobalRead,LocalWrite and LocalRead; an odd number of those must be transposing and operating on vector components.
-    # since data will be read from lds many more times than it will be written, data must always end up in lds such that short-vectors can be read from lds
-    # =True means read short-vector from global and write its components to lds
-    # =False means read vector components from global so that a full short-vector can be written to lds
-    # both options were supported until a refactoring of the short-vector code (necessary to enable assembly) broke it. Since =True always seems to be faster, no time has been spend on fixing =False
-    #  it may still work in source, but just not in assembly. The problem is the order in which elements are stored into vgprs, is different than the order in which they are written to lds. In source each
-    #  loaded element gets a variable name which in independent of the order that they are written in the source code, but in assembly the values are just assigned vgprs in order and that order needs to be shuffles.
-    "GlobalReadCoalesceVectorA":  [        True ], # FIXME =False worked before the vector refactor; fixing requires re-ordering load/store indices; but they aren't the faster option so not worth time right now
-    "GlobalReadCoalesceVectorB":  [        True ],
-
     # original global read to lds is interlace, [w0,w1,w2,w3,w0,w1,w2,w3,w0,w1,w2,w3,w0,w1,w2,w3]
     # when WaveSeparateGlobalRead is enabled, LDS is divided to number of waves part.
     # each wave load a block memory to lds,     [w0,w0,w0,w0,w1,w1,w1,w1,w2,w2,w2,w2,w3,w3,w3,w3]
@@ -1088,13 +1066,9 @@ defaultBenchmarkCommonParameters = [
     {"StoreVectorWidth":          [ -1 ] },
     {"GlobalReadVectorWidth":     [ -1 ] },
     {"LocalReadVectorWidth":      [ -1 ] },
-    {"GlobalReadCoalesceVectorA": [ True ] },
-    {"GlobalReadCoalesceVectorB": [ True ] },
     {"WaveSeparateGlobalReadA":   [ 0 ] },
     {"WaveSeparateGlobalReadB":   [ 0 ] },
     {"SplitGlobalRead":           [ 1 ] },
-    {"GlobalReadCoalesceGroupA":  [ True ] },
-    {"GlobalReadCoalesceGroupB":  [ True ] },
     {"PrefetchGlobalRead":        [ 1 ] },
     {"PrefetchLocalRead":         [ 1 ] },
     {"SuppressNoLoadLoop":        [ False ]},

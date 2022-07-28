@@ -2576,22 +2576,12 @@ class KernelWriterAssembly(KernelWriter):
     module = Code.Module("graTileAssignment")
     tc = tP["tensorChar"]
 
-    if tP["grcg"]:
-      if tP["grcv"]:
-        divisorName = tP["lvc"]
-      else:
-        # Fractional load use the more accurate lsc, multiply by VW later
-        divisorName = tP["lsc"]
-    else:
-      if tP["grcv"]:
-        divisorName = tP["lsp"]
-      else:
-        divisorName = tP["lvp"]
+    divisorName = tP["lvc"]
     divisor = kernel[divisorName]
 
     # force to swap gro-tile and gro-unroll for DirectToVgpr + TLU=False
     forceSwap = (kernel["DirectToVgpr%s"%tc] and not tP["tlu"])
-    if tP["grcg"] == tP["tlu"] or forceSwap:
+    if tP["tlu"] or forceSwap:
       rReg = self.vgprPool.checkOut(1, "graTA rReg0", self.preventVgprOverflowDuringNewTile) # gro-tile = serial%divisor
       qReg = self.vgprPool.checkOut(1, "graTA qReg0", self.preventVgprOverflowDuringNewTile) # gro-unroll = serial/divisor
       tReg = rReg
@@ -2707,7 +2697,7 @@ class KernelWriterAssembly(KernelWriter):
       self.vgprPool.checkIn(dummy)
 
     if tP["glvw"] > 1:
-      if tP["grcv"] == tP["tlu"]:
+      if tP["tlu"]:
         module.addComment0("gro-tile *= glvw")
         module.addCode(staticMultiply(vgpr(tReg), vgpr(tReg), tP["glvw"], sgpr(tmpSgpr)))
       else:
@@ -3914,17 +3904,7 @@ class KernelWriterAssembly(KernelWriter):
                                       finalVgpr=None, tmp1=None, tmp2=None):
     module = Code.Module("lraOffsetConversionForDTLandNLC")
     # another address conversion for DirectToLds + NumLoadsCoalesced > 1
-    if tP["grcg"]:
-      if tP["grcv"]:
-        divisorName = tP["lvc"]
-      else:
-        # Fractional load use the more accurate lsc, multiply by VW later
-        divisorName = tP["lsc"]
-    else:
-      if tP["grcv"]:
-        divisorName = tP["lsp"]
-      else:
-        divisorName = tP["lvp"]
+    divisorName = tP["lvc"]
     divisor = kernel[divisorName]
     width = kernel["WavefrontSize"] if tP["tlu"] else kernel["DepthU"]
     if divisor < width:
@@ -5818,17 +5798,7 @@ class KernelWriterAssembly(KernelWriter):
                   elif directToLdsLoads != 0 and ldsInc > 0:
                       if tP["nrc"] > 1:
                         # another address conversion for DirectToLds + NumLoadsCoalesced > 1
-                        if tP["grcg"]:
-                          if tP["grcv"]:
-                            divisorName = tP["lvc"]
-                          else:
-                            # Fractional load use the more accurate lsc, multiply by VW later
-                            divisorName = tP["lsc"]
-                        else:
-                          if tP["grcv"]:
-                            divisorName = tP["lsp"]
-                          else:
-                            divisorName = tP["lvp"]
+                        divisorName = tP["lvc"]
                         divisor = kernel[divisorName]
                         # DirectToLds + NumLoadsCoalesced>1 case, need to adjust m0 increment value to store values to correct location in LDS
                         wSize = max(self.kernel["WavefrontSize"], divisor)
@@ -6160,17 +6130,7 @@ class KernelWriterAssembly(KernelWriter):
                   # in tP["glvw"] == 1 and tP["nrc"] > 1 case, only m0 offset conversion is necessary. row and column index conversion is not necessary.
                   if tP["nrc"] > 1:
                     # another address conversion for DirectToLds + NumLoadsCoalesced > 1
-                    if tP["grcg"]:
-                      if tP["grcv"]:
-                        divisorName = tP["lvc"]
-                      else:
-                        # Fractional load use the more accurate lsc, multiply by VW later
-                        divisorName = tP["lsc"]
-                    else:
-                      if tP["grcv"]:
-                        divisorName = tP["lsp"]
-                      else:
-                        divisorName = tP["lvp"]
+                    divisorName = tP["lvc"]
                     divisor = kernel[divisorName]
                     # DirectToLds + NumLoadsCoalesced>1 case, need to adjust m0 increment value to store values to correct location in LDS
                     wSize = max(self.kernel["WavefrontSize"], divisor)
@@ -6372,7 +6332,7 @@ class KernelWriterAssembly(KernelWriter):
 
     # print("1lspaOffset", lspaOffset)
     # print("1lscaOffset", lscaOffset)
-    #if tP["tlu"] == tP["grcv"]:
+    #if tP["tlu"]:
     #  lspaOffset *= tP["glvw"]
     #  lscaOffset *= tP["glvw"]
 
@@ -6529,7 +6489,6 @@ class KernelWriterAssembly(KernelWriter):
         print("tlu", tP["tlu"])
         print("lsc", kernel[tP["lsc"]])
         print("lsp", kernel[tP["lsp"]])
-        print("grcv", tP["grcv"])
         print("wtc", tP["wtc"])
         print("wuc", tP["wuc"])
         print("nrc", tP["nrc"])
@@ -6560,14 +6519,14 @@ class KernelWriterAssembly(KernelWriter):
             sPerp = 0
             sPara = 0
             if tP["tlu"] != kernel["UnrollMajorLDS%s" % tP["tensorChar"]]:
-              if tP["wtc"] == tP["grcv"]:
+              if tP["wtc"]:
                 sPerp = s
-              elif tP["wuc"] == tP["grcv"]:
+              elif tP["wuc"]:
                 sPara = s
             else:
-              if tP["wtc"] == tP["grcv"]:
+              if tP["wtc"]:
                 sPara = s
-              elif tP["wuc"] == tP["grcv"]:
+              elif tP["wuc"]:
                 sPerp = s
 
             #print("perp:{}/{} para:{}/{} sPerp:{} sPara:{} loopCnt:{}".format(perp,tP["nrp"],para,tP["nrc"],sPerp,sPara,loopCnt))
