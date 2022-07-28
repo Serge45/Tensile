@@ -1601,7 +1601,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
     # declare loop num iter
     if not forceNoTileCode:
       module.addComment0("declare loop num iterations")
-      module.addCode(self.declareLoopNumIter(kernel))
 
     # perform initC in the shadow of the prefetch
     # Prefetch occurs at start of unroll loop
@@ -2867,13 +2866,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
     self.otherSummationLoops  = self.actualSummationLoops-1
     self.otherSummations      = kernel["ProblemType"]["NumIndicesSummation"]-1 # not loops but summations vars
 
-    # If 0, unroll loop is decremented by 1 each iteration and scaled by DEPTHU when number of summation elements
-    # is required.
-    # if 1, unroll loop starts at 0 and increments by DEPTHU.  No scaling is required.  This mode is required
-    # for pack summation dims, but can also be used independently and this is useful for isolation and testing.
-    self.unrollIncIsDepthU = kernel["UnrollIncIsDepthU"]
-
-
     self.enable = {}
     dkp = kernel["DisableKernelPieces"]
     # Can locally overrid these by changing True to False or
@@ -3488,13 +3480,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
   ##############################################################################
   @abc.abstractmethod
   def recalcLocalWriteAddresses(self, kernel, tP, uDu):
-    return ""
-
-  ##############################################################################
-  # Declare Loop Num Iterations
-  ##############################################################################
-  @abc.abstractmethod
-  def declareLoopNumIter(self, kernel):
     return ""
 
   ##############################################################################

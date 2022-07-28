@@ -331,12 +331,8 @@ class KernelWriterAssembly(KernelWriter):
 
   def checkLastIter(self, kernel, comment="at last iteration?"):
     """ Return last iteration of unroll loop. """
-    if self.unrollIncIsDepthU:
-      return Code.Inst("s_cmp_gt_u32", "DepthU", \
-          sgpr("UnrollLoopLastIter"), comment)
-    else:
-      return Code.Inst("s_cmp_eq_u32", self.loopCounter(kernel, self.unrollIdx), \
-          0, comment)
+    return Code.Inst("s_cmp_eq_u32", self.loopCounter(kernel, self.unrollIdx), \
+        0, comment)
 
   def isConstUnitStride(self, stride):
       if isinstance(stride, Code.RegisterContainer):
@@ -461,10 +457,6 @@ class KernelWriterAssembly(KernelWriter):
     # Mostly impacts flat kernels and GSU edge since these need SGPR
     # for conditionals
     # self.lastPostLoopSgpr = self.sgprPool.size()
-
-    if self.unrollIncIsDepthU:
-      # product of all summation dimensions, this also will be divided if GSU is enabled
-      self.defineSgpr("UnrollLoopLastIter", 1)
 
     if self.use64bShadowLimit:
       # If need more SGPR could overlap this with the Tensor2dSize regs
@@ -4076,25 +4068,6 @@ class KernelWriterAssembly(KernelWriter):
     return module
 
   ##############################################################################
-  # Declare Loop Num Iterations
-  ##############################################################################
-  def declareLoopNumIter(self, kernel):
-    module = Code.Module("declareLoopNumIter")
-    if self.unrollIncIsDepthU:
-      if kernel["GlobalSplitU"] > 1:
-        tmpSgpr = self.getTmpSgpr(3).idx()
-        quotient = "UnrollLoopLastIter"
-        dividend = self.loopSizeRef(kernel, self.unrollIdx) # sumSize
-        divisor = kernel["DepthU"]
-        module.addCode(scalarStaticDivideAndRemainder(quotient, None, dividend, divisor, tmpSgpr, 0))
-        module.addCode(self.calculateLoopNumIterGsu(kernel, "UnrollLoopLastIter", tmpSgpr))
-        module.addInst ("s_mul_i32", sgpr("UnrollLoopLastIter"), sgpr("UnrollLoopLastIter"), "DepthU", "scale")
-      else:
-        module.addInst ("s_mov_b32", sgpr("UnrollLoopLastIter"), self.loopSizeRef(kernel, self.unrollIdx), "init")
-
-    return module
-
-  ##############################################################################
   # Calculate and apply stagger offsets and edge
   # Output: Sets sgpr(StaggerRowMask)
   ##############################################################################
@@ -4339,26 +4312,22 @@ class KernelWriterAssembly(KernelWriter):
 
       sumSize = "SizesSum+%u"%loopIdx
       #sumSize = self.sumSize(kernel, loopIdx)
-      if self.unrollIncIsDepthU:
-        module.addInst("s_mov_b32", loopCounter, 0,\
-                  "init loop counter, unrollIncIsDepthU mode")
 
+      # TODO - use named arguments
+      tmpSgpr = self.getTmpSgpr(3).idx()
+      quotient = loopCounterName
+      dividend = sumSize
+      divisor = kernel["DepthU"]
+      if self.noTailLoop and kernel["AssertSummationElementMultiple"] % kernel["DepthU"] != 0:
+        # round up SizesSum/DepthU for noTailLoop case
+        module.addInst("s_add_i32", sgpr(quotient), (divisor - 1), sgpr(dividend), \
+            "round up SizeSum / DepthU" )
+        module.addCode(scalarStaticDivideAndRemainder(quotient, None, quotient, divisor, tmpSgpr, 0))
       else:
-        # TODO - use named arguments
-        tmpSgpr = self.getTmpSgpr(3).idx()
-        quotient = loopCounterName
-        dividend = sumSize
-        divisor = kernel["DepthU"]
-        if self.noTailLoop and kernel["AssertSummationElementMultiple"] % kernel["DepthU"] != 0:
-          # round up SizesSum/DepthU for noTailLoop case
-          module.addInst("s_add_i32", sgpr(quotient), (divisor - 1), sgpr(dividend), \
-              "round up SizeSum / DepthU" )
-          module.addCode(scalarStaticDivideAndRemainder(quotient, None, quotient, divisor, tmpSgpr, 0))
-        else:
-          module.addCode(scalarStaticDivideAndRemainder(quotient, None, dividend, divisor, tmpSgpr, 0))
-        # if GSU numIter++ if gsuSumIdx < remainder
-        if kernel["GlobalSplitU"] > 1:
-          module.addCode(self.calculateLoopNumIterGsu(kernel, loopCounterName, tmpSgpr))
+        module.addCode(scalarStaticDivideAndRemainder(quotient, None, dividend, divisor, tmpSgpr, 0))
+      # if GSU numIter++ if gsuSumIdx < remainder
+      if kernel["GlobalSplitU"] > 1:
+        module.addCode(self.calculateLoopNumIterGsu(kernel, loopCounterName, tmpSgpr))
 
       module.addInst("s_mov_b32", sgpr("OrigLoopCounter"), \
                 loopCounter, \
@@ -4474,35 +4443,17 @@ class KernelWriterAssembly(KernelWriter):
       if loopIdx == self.unrollIdx:
         # 1 loop check is necessary only when AssertSummationElementMultiple % (DepthU * 2) != 0
         if kernel["PrefetchGlobalRead"] == 2 and kernel["AssertSummationElementMultiple"] % (kernel["DepthU"] * 2) != 0:
-          if not self.unrollIncIsDepthU:
-            module.addInst("s_cmp_eq_u32", \
-                loopCounter, \
-                hex(endCounter-1), \
-                "LoopCounter%s < EndCounter"%(loopChar) )
-          else:
-            module.addInst("s_cmp_ge_u32", \
-                loopCounter, \
-                sgpr("UnrollLoopLastIter"), \
-                "LoopCounter%s > EndCounter"%(loopChar) )
+          module.addInst("s_cmp_eq_u32", \
+              loopCounter, \
+              hex(endCounter-1), \
+              "LoopCounter%s < EndCounter"%(loopChar) )
           toPGR1 = Code.Label.getFormatting(self.labels.getName("toPGR1"))
           module.addInst("s_cbranch_scc1 %s"%toPGR1, "PGR=2 but only 1 loop, toPGR1")
 
-        if self.unrollIncIsDepthU:
-          if kernel["PrefetchGlobalRead"] == 2:
-            tmpSgpr = self.getTmpSgpr(1).idx()
-            module.addInst("s_add_u32", sgpr(tmpSgpr),\
-                loopCounter, \
-                 "DepthU", "")
-            loopCounter = sgpr(tmpSgpr)
-          module.addInst("s_cmp_ge_u32", \
-              loopCounter, \
-              sgpr("UnrollLoopLastIter"), \
-              "LoopCounter%s > EndCounter"%(loopChar) )
-        else:
-          module.addInst("s_cmp_le_u32", \
-              loopCounter, \
-              hex(endCounter), \
-              "LoopCounter%s < EndCounter"%(loopChar) )
+        module.addInst("s_cmp_le_u32", \
+            loopCounter, \
+            hex(endCounter), \
+            "LoopCounter%s < EndCounter"%(loopChar) )
         jumpLabel = loopLabelEnd
         if kernel["PrefetchGlobalRead"]==2 and (not kernel["SuppressNoLoadLoop"]) and kernel["ExpandPointerSwap"]:
           # PGR=2 and EPS and no SuppressNoLoadLoop case, need to jump to EvenExit
@@ -4589,87 +4540,69 @@ class KernelWriterAssembly(KernelWriter):
       loopCounter = self.loopCounter(kernel, loopIdx)
       module.addComment1("closeLoop loop%s finalLoop=%d tailLoop=%d" % (loopChar, finalLoop, tailLoop))
 
-      if self.unrollIncIsDepthU and loopIdx==self.unrollIdx:
-        assert (not kernel["SuppressNoLoadLoop"]) # not accounting for end-of-loop iteration change here in deprecated mode
+      # If PrefetchGlobalRead=1 the loads in the loop prefetch next macro-tile
+      # For the final trip through the unroll loop we need to ensure those loads stay in bounds.
 
-        if kernel["PrefetchGlobalRead"] == 2:
-          tmpSgpr = self.getTmpSgpr(1).idx()
-          module.addInst("s_add_u32", sgpr(tmpSgpr),\
-              loopCounter, \
-               "DepthU", "")
-          module.addInst("s_cmp_ge_u32", \
-              sgpr(tmpSgpr), \
-              sgpr("UnrollLoopLastIter"), \
-              "LoopCounter%s + DU < EndCounter. Go to PGR1"%(loopChar) )
-        else:
-          module.addInst("s_cmp_ge_u32", \
-              loopCounter, \
-              sgpr("UnrollLoopLastIter"), \
-            "counter%s==0"%(loopChar) )
+      # One technique is to create a copy of the unroll loop with all loads removed.
+      # However buffer load doesn't need this loop copy since we OOB loads can be suppressed by buffer limit hardware
+      # So can do one more iteration (endCounter==0) in the main unroll loop, and adjust the pointer
+      # increments appropriately.
+      # Also sum idx other than unroll always compare against 0 (there is no PGR to account for)
+      if kernel["PrefetchGlobalRead"] == 1 and not kernel["SuppressNoLoadLoop"] and loopIdx == self.unrollIdx:
+        endCounter = 1
+      elif kernel["PrefetchGlobalRead"] == 2 and not kernel["SuppressNoLoadLoop"] and loopIdx == self.unrollIdx:
+        endCounter = 2
       else:
-        # If PrefetchGlobalRead=1 the loads in the loop prefetch next macro-tile
-        # For the final trip through the unroll loop we need to ensure those loads stay in bounds.
+        endCounter = 0
 
-        # One technique is to create a copy of the unroll loop with all loads removed.
-        # However buffer load doesn't need this loop copy since we OOB loads can be suppressed by buffer limit hardware
-        # So can do one more iteration (endCounter==0) in the main unroll loop, and adjust the pointer
-        # increments appropriately.
-        # Also sum idx other than unroll always compare against 0 (there is no PGR to account for)
-        if kernel["PrefetchGlobalRead"] == 1 and not kernel["SuppressNoLoadLoop"] and loopIdx == self.unrollIdx:
-          endCounter = 1
-        elif kernel["PrefetchGlobalRead"] == 2 and not kernel["SuppressNoLoadLoop"] and loopIdx == self.unrollIdx:
-          endCounter = 2
+      if kernel["AssertSummationElementMultiple"] % (kernel["DepthU"] * 2) == 0 and endCounter > 0:
+        # if AssertSummationElementMultiple is multiple of DepthU*2, loop exit is necessary only once in 2 Loop iterations
+        #  In endCounter % 2 == 1 case, exit at lc % 2 == 0 (= oddLabel). It means no exit if not oddLabel
+        #  In endCounter % 2 == 0 case, exit at lc % 2 == 1 (= not oddLabel). It means no exit if oddLabel
+        # No exit case, no code is necessary except for final Loop
+
+        # decrement by 2 if PGR=2 and StaggerU is 0, else 1
+        decValue = 2 if kernel["PrefetchGlobalRead"]==2 and kernel["StaggerU"] == 0 else 1
+        decCode = Code.Inst("s_sub_u32", \
+            loopCounter, loopCounter, \
+            decValue, \
+            "dec counter%s"%(loopChar) )
+        condCode = Code.Inst("s_cmp_eq_i32", \
+            loopCounter, \
+            hex(endCounter), \
+          "counter%s==%d"%(loopChar,endCounter) )
+
+        noExit = False
+
+        if endCounter%2 != 0:
+          if not oddLabel:
+            noExit = True
         else:
-          endCounter = 0
+          if oddLabel:
+            noExit = True
 
-        if kernel["AssertSummationElementMultiple"] % (kernel["DepthU"] * 2) == 0 and endCounter > 0:
-          # if AssertSummationElementMultiple is multiple of DepthU*2, loop exit is necessary only once in 2 Loop iterations
-          #  In endCounter % 2 == 1 case, exit at lc % 2 == 0 (= oddLabel). It means no exit if not oddLabel
-          #  In endCounter % 2 == 0 case, exit at lc % 2 == 1 (= not oddLabel). It means no exit if oddLabel
-          # No exit case, no code is necessary except for final Loop
+        if noExit:
+          # No exit. No dec code if decValue is 2
+          if decValue == 2:
+            decCode = ""
+          condCode = ""
+          nonFinalJumpNeeded = False
+          if finalLoop:
+            # No exit and finalLoop case, use s_branch (no condition)
+            finalJump = "s_branch"
 
-          # decrement by 2 if PGR=2 and StaggerU is 0, else 1
-          decValue = 2 if kernel["PrefetchGlobalRead"]==2 and kernel["StaggerU"] == 0 else 1
-          decCode = Code.Inst("s_sub_u32", \
-              loopCounter, loopCounter, \
-              decValue, \
-              "dec counter%s"%(loopChar) )
-          condCode = Code.Inst("s_cmp_eq_i32", \
-              loopCounter, \
-              hex(endCounter), \
-            "counter%s==%d"%(loopChar,endCounter) )
+        if decCode: module.addCode(decCode)
+        if condCode: module.addCode(condCode)
+      else:
+        module.addInst("s_sub_u32", \
+            loopCounter, loopCounter, \
+            1, \
+            "dec counter%s"%(loopChar) )
 
-          noExit = False
-
-          if endCounter%2 != 0:
-            if not oddLabel:
-              noExit = True
-          else:
-            if oddLabel:
-              noExit = True
-
-          if noExit:
-            # No exit. No dec code if decValue is 2
-            if decValue == 2:
-              decCode = ""
-            condCode = ""
-            nonFinalJumpNeeded = False
-            if finalLoop:
-              # No exit and finalLoop case, use s_branch (no condition)
-              finalJump = "s_branch"
-
-          if decCode: module.addCode(decCode)
-          if condCode: module.addCode(condCode)
-        else:
-          module.addInst("s_sub_u32", \
-              loopCounter, loopCounter, \
-              1, \
-              "dec counter%s"%(loopChar) )
-
-          module.addInst("s_cmp_eq_i32", \
-              loopCounter, \
-              hex(endCounter), \
-            "counter%s==%d"%(loopChar,endCounter) )
+        module.addInst("s_cmp_eq_i32", \
+            loopCounter, \
+            hex(endCounter), \
+          "counter%s==%d"%(loopChar,endCounter) )
 
     jumpLabel = loopLabelEnd
     if not tailLoop and not kernel["SuppressNoLoadLoop"] and kernel["ExpandPointerSwap"]:
@@ -5510,12 +5443,6 @@ class KernelWriterAssembly(KernelWriter):
 
     incCodeA = imod.addCode(Code.Module("globalReadIncrementA"))
     incCodeB = imod.addCode(Code.Module("globalReadIncrementB"))
-
-    if self.unrollIncIsDepthU and loopIdx==self.unrollIdx:
-      loopCounter = self.loopCounter(kernel, self.unrollIdx)
-      incCodeA.addInst("s_add_u32",
-                   loopCounter, loopCounter,
-                   "DepthU",  "increment psdIter")
 
     self.globalReadIncrement(kernel, incCodeA, loopIdx, self.tPA, prefetchIndex, incs)
     self.globalReadIncrement(kernel, incCodeB, loopIdx, self.tPB, prefetchIndex, incs)

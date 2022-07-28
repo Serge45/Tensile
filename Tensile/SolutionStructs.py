@@ -2265,16 +2265,6 @@ class Solution(collections.abc.Mapping):
 
     assert(state["DepthU"]> 0)
 
-    if state["UnrollIncIsDepthU"]:
-        # unrollIncIsDepthU does not support tail loop, so add asem requirement to reject
-        # problems that require tail loop.
-        if state["DepthU"] % state["AssertSummationElementMultiple"] != 0:
-          reject(state, "PackSummationDims=1 requires DepthU is integer multiple of ASEM")
-        else:
-          state["AssertSummationElementMultiple"] = state["DepthU"]
-        # not supported with PSD, has some interaction with iter
-        state["StaggerU"] = 0
-
     if not Solution.setGlobalLoadTileDimClassic(state, "A", state["NumLoadsA"], \
         totalVectorsCoalescedA, totalElementsPerpA):
       return

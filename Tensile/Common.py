@@ -862,9 +862,6 @@ validParameters = {
     # If False, macro-tile is always Free0*Free1.  Additional free dimensions are not supported.
     "PackFreeDims":              [False, True],
 
-    # debug mode, uses the PackSummationDims method to increment the unroll loop counter
-    "UnrollIncIsDepthU":         [0,1],
-
     # Controls desired width (#elements) for loads from global memory -> LDS.
     # and eliminates the pointer unshift logic
     # -1 : Set GlobalReadVectorWidth =  VectorWidth
@@ -1096,7 +1093,6 @@ defaultBenchmarkCommonParameters = [
     {"MacroTileShapeMin":         [ 1 ] },
     {"MacroTileShapeMax":         [ 64 ] },
     {"PackFreeDims":              [ 1 ] },
-    {"UnrollIncIsDepthU":         [ 0 ] },
     {"Use64bShadowLimit":         [ 1 ] },
     {"VectorAtomicWidth":         [ -1 ] },
     {"NumLoadsCoalescedA":        [ 1 ] },
