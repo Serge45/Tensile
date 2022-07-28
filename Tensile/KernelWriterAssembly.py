@@ -7152,7 +7152,7 @@ class KernelWriterAssembly(KernelWriter):
 
     if kernel["BufferStore"]:
       if atomic:
-        return kernel["VectorAtomicWidth"]
+        return self.getVectorAtomicWidth(kernel)
       else:
         return 1000  # no limit
     else:
@@ -7160,6 +7160,11 @@ class KernelWriterAssembly(KernelWriter):
         return 1  # flat vector atomic is not tested
       else:
         return 1000  # no limit
+
+  def getVectorAtomicWidth(self, kernel):
+    if kernel["ProblemType"]["DataType"].isHalf() and (not kernel["_GlobalAccumulation"]):
+      return 2
+    return 1
 
   ##############################################################################
   # Partition thread-tile into writeElements for store code
@@ -7843,7 +7848,7 @@ class KernelWriterAssembly(KernelWriter):
             print2(self.vgprPool.state())
 
         # set atomicW after we potentially resize GWVW
-        atomicW = min(gwvw, kernel["VectorAtomicWidth"])
+        atomicW = min(gwvw, self.getVectorAtomicWidth(kernel))
 
         # print("NumVgprAvailable", numVgprAvailable)
         if numVgprsPerElement:

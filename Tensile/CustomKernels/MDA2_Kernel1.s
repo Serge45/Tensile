@@ -103,7 +103,6 @@ custom.config:
   ThreadTile: [ 4, 4 ]
   TransposeLDS: 0
   UseSgprForGRO: 1
-  VectorAtomicWidth: 1
   VectorStore: 1
   VectorWidth: 4
   WaveSeparateGlobalReadA: 0

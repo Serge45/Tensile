@@ -561,12 +561,6 @@ validParameters = {
     # Use a 64-bit shadow limit register to allow buffers larger than 2^32 bytes
     "Use64bShadowLimit":   [ True, False],
 
-    # Attempt to vectorize atomics
-    # 1,2,4 : Number of elements to vectorize
-    # -1 : Maximum supported value.  Half=2, Single=1, Double=1
-    # Currently 32-bit CAS only, eventually might support more
-    "VectorAtomicWidth":          [ -1, 1, 2 ] ,
-
     # Assertion properties
     # These provide information or assertions that the problem size meets certain requirements
     # for sizes or alignments.  The kernel generator can use this information to produce
@@ -1088,7 +1082,6 @@ defaultBenchmarkCommonParameters = [
     {"MacroTileShapeMin":         [ 1 ] },
     {"MacroTileShapeMax":         [ 64 ] },
     {"Use64bShadowLimit":         [ 1 ] },
-    {"VectorAtomicWidth":         [ -1 ] },
     {"NumLoadsCoalescedA":        [ 1 ] },
     {"NumLoadsCoalescedB":        [ 1 ] },
     {"WorkGroup":                 [ [16,16,1]] },

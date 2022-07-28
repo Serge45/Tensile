@@ -2028,24 +2028,12 @@ class Solution(collections.abc.Mapping):
         reject(state, "GlobalSplitU only compatible with single or asm and (half or mixed) precision")
         return
 
-    if state["VectorAtomicWidth"] == -1:
-      state["VectorAtomicWidth"] = 1 # TODO - remove this and next line when VAW works for other types
-      if state["ProblemType"]["DataType"].isHalf() and (not state["_GlobalAccumulation"]):
-        state["VectorAtomicWidth"] = 2
-
-    if state["VectorAtomicWidth"] >= 2 \
-       and not state["ProblemType"]["DataType"].isHalf():
-         reject (state, "VectorAtomicWidth>=2 only supported for half")
-
     if state["ProblemType"]["DataType"].isHalf() and state["KernelLanguage"] == "Assembly":
 
       if (not state["EnableMatrixInstruction"]) and state["VectorWidth"] < 2:
         reject(state, "Assembly half requires VectorWidth >= 2 for non-MFMA mode")
 
       if state["GlobalSplitU"] > 1 and (not state["_GlobalAccumulation"]):
-        if state["VectorAtomicWidth"] < 2:
-          reject(state, "Assembly GSU half requires VectorWidth >= 2 (for 32-bit CAS)")
-
         if state["AssertFree0ElementMultiple"] < 2:
           reject(state, "Assembly GSU half requires AF0EM>=2 (for atomics on edge tiles)")
 
