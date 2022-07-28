@@ -857,11 +857,6 @@ validParameters = {
     #   this will create a set of kernels with progessively more pieces of the kernel disabled
     "DisableKernelPieces":        list(range(-9,10)),         # disable pieces of the kernel, for performance isolation
 
-    # Pack free dimensions
-    # If True, allow macro-tile to span free dimensions.  Single workgroup can work across multiple free dimensions.
-    # If False, macro-tile is always Free0*Free1.  Additional free dimensions are not supported.
-    "PackFreeDims":              [False, True],
-
     # Controls desired width (#elements) for loads from global memory -> LDS.
     # and eliminates the pointer unshift logic
     # -1 : Set GlobalReadVectorWidth =  VectorWidth
@@ -1092,7 +1087,6 @@ defaultBenchmarkCommonParameters = [
     {"GlobalSplitUAlgorithm":     [ "SingleBuffer" ] },
     {"MacroTileShapeMin":         [ 1 ] },
     {"MacroTileShapeMax":         [ 64 ] },
-    {"PackFreeDims":              [ 1 ] },
     {"Use64bShadowLimit":         [ 1 ] },
     {"VectorAtomicWidth":         [ -1 ] },
     {"NumLoadsCoalescedA":        [ 1 ] },

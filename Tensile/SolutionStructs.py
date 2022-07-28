@@ -790,10 +790,10 @@ class ActivationArgs:
     return s
 
 # kds is class Solution or class Kernel
-# If PackFreeDims=1 then all free dims are packed ; else only 1 free dim/matrix is supported
+# All free dims are packed
 def isPackedIndex(ks, index):
   problemType = ks["ProblemType"]
-  return index in problemType["IndicesFree"] and ks["PackFreeDims"]
+  return index in problemType["IndicesFree"]
 
 def isExtractableIndex(ks, index, tc='x'):
   xA = index in ks['PackedC0IndicesX'][:-1]
