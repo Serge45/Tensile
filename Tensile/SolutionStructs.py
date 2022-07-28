@@ -2302,18 +2302,6 @@ class Solution(collections.abc.Mapping):
     state["LVCB"] = roundupRatio(state["LSCB"] , state["GlobalLoadVectorWidthB"])
     state["LVPB"] = roundupRatio(state["LSPB"] , state["GlobalLoadVectorWidthB"])
 
-    if state["SplitGlobalRead"] > 1:
-      if state["DirectToLds"]:
-        reject(state, "SplitGlobalRead not yet supported with DirectToLds")
-      if state["DirectToVgprA"] or state["DirectToVgprB"]:
-        reject(state, "SplitGlobalRead does not work with DirectToVgpr")
-      divisorNameA = Solution.getDivisorName(state, "A")
-      divisorNameB = Solution.getDivisorName(state, "B")
-      divisorA = state[divisorNameA]
-      divisorB = state[divisorNameB]
-      if state["SplitGlobalRead"] >= divisorA and state["SplitGlobalRead"] >= divisorB:
-        reject(state, "SplitGlobalRead must be less than lvc/lsc/lvp/lsp")
-
     for tc in ('A','B'):
       if problemType["TLU%s"%tc]:
         pos = problemType["IndexAssignments%s"%tc].index(problemType["Index01%s"%tc])

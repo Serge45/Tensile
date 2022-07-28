@@ -2563,12 +2563,6 @@ class KernelWriterAssembly(KernelWriter):
       dummy       = self.vgprPool.checkOut(1, "dummy", self.preventVgprOverflowDuringNewTile)
       module.addCode(vectorStaticRemainder(dummy, dividendReg, "Serial", kernel["WavefrontSize"], tmpVgpr, tmpSgpr))
 
-    splitRead = kernel["SplitGlobalRead"]
-    # Split global read reorders reading rows within lanes of a wavefront
-    # If the wavefront is reading all from a single row, then disable split global read for this tensor
-    if divisor > kernel["WavefrontSize"]:
-      splitRead = 1
-
     if kernel["DirectToVgpr%s"%tc]:
       # offset calculation for DirectToVgpr
       # ported code from local read for DirectToVgpr
@@ -2601,29 +2595,6 @@ class KernelWriterAssembly(KernelWriter):
             module.addCode(staticMultiply(vgpr(qReg), vgpr(qReg), lrvwOther, sgpr(tmpSgpr)))
       # release register
       self.vgprPool.checkIn(wReg)
-    elif splitRead > 1:
-      splitGroup = self.vgprPool.checkOut(1, "splitGroup", self.preventVgprOverflowDuringNewTile)
-      splitIndex = self.vgprPool.checkOut(1, "splitIndex", self.preventVgprOverflowDuringNewTile)
-      waveSize = kernel["WavefrontSize"]
-      groupDivisor = waveSize // splitRead
-      groupOffset = waveSize // divisor
-      newDivisor = divisor // splitRead
-
-      module.addCode(vectorStaticRemainder(tmpVgpr, splitIndex, dividendReg, groupDivisor, tmpVgpr, tmpSgpr, "Split index"))
-      module.addCode(vectorStaticDivideAndRemainder(qReg, rReg, splitIndex, newDivisor, tmpVgpr, tmpSgpr))
-
-      module.addCode(vectorStaticDivideAndRemainder(splitGroup, splitIndex, dividendReg, waveSize, tmpVgpr, tmpSgpr))
-
-      if groupOffset > 1:
-        module.addInst("v_mul_u32_u24", vgpr(splitGroup), groupOffset, vgpr(splitGroup), "Calculate wave group offset")
-      module.addInst("_v_add_u32", vgpr(qReg), vgpr(splitGroup), vgpr(qReg), "Add wave group")
-
-      module.addCode(vectorStaticDivide(splitIndex, splitIndex, groupDivisor, tmpVgpr, tmpSgpr, "Calculate index offset"))
-      module.addInst("v_mul_u32_u24", vgpr(splitIndex), newDivisor, vgpr(splitIndex), "Calculate index offset")
-      module.addInst("_v_add_u32", vgpr(rReg), vgpr(splitIndex), vgpr(rReg), "Add index offset")
-
-      self.vgprPool.checkIn(splitIndex)
-      self.vgprPool.checkIn(splitGroup)
     else:
       module.addCode(vectorStaticDivideAndRemainder(qReg, rReg, dividendReg, divisor, tmpVgpr, tmpSgpr))
 
