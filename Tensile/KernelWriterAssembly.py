@@ -8089,11 +8089,8 @@ class KernelWriterAssembly(KernelWriter):
         module.addCode(self.chooseGlobalWrite(useBuffer, bps, sumIdx, rpv, \
                        addr0, addr1, addrCalc.globalOffset, ntStr))
       elif kernel["ProblemType"]["DestDataType"].isDouble() or kernel["ProblemType"]["DestDataType"].isSingleComplex():
-        if kernel["AtomicAddC"] and not edge:
-          module.addInst("buffer_atomic_add_f64", vgpr(sumIdx*2, 2), vgpr(addrCalc.addrDVgpr), sgpr("SrdD", 4), "0", "offen offset:{}".format(addrCalc.globalOffset), "AtomicAddC")
-        else:
-          module.addCode(self.chooseGlobalWrite(useBuffer, bps, sumIdx*2, rpv, \
-                         addr0, addr1, addrCalc.globalOffset, ntStr))
+        module.addCode(self.chooseGlobalWrite(useBuffer, bps, sumIdx*2, rpv, \
+                       addr0, addr1, addrCalc.globalOffset, ntStr))
       elif kernel["ProblemType"]["DestDataType"].isDoubleComplex():
         rps = kernel["ProblemType"]["DestDataType"].numRegisters()
         module.addCode(self.chooseGlobalWrite(useBuffer, bps, sumIdx*rps, rpv, \
@@ -8336,8 +8333,6 @@ class KernelWriterAssembly(KernelWriter):
             for vi in range(0, gwvw):
               module.addCode(replacePlaceHolder(codeMulAlpha.items().pop(0), "__placeholder__", str(ss.elementSumIdx[elementIdx]*regsPerScalar + regsPerScalar*vi)))
 
-    atomicAddC = kernel["AtomicAddC"] and not edge
-
     loadCInputCode = Code.Module("loadCInputCode")
 
     for elementIdx in range(0, len(batchElements)):
@@ -8360,7 +8355,7 @@ class KernelWriterAssembly(KernelWriter):
 
       # create code Module to push mov vgpr,acc instructions
 
-      if beta and not atomicAddC:
+      if beta:
         module.addCode(addrCalc.emitLdChange(kernel, ss, 'C', edge, beta, mask, (elementIdx == 0), tmpVgpr, addrCVgpr, addrC))
         if kernel["GroupLoadStore"]:
           loadCInputCode.addCode(self.readCInput(kernel, ss, addrCalc, vc0, data, gwvw, addrCVgpr, tmpS01))
@@ -8864,10 +8859,9 @@ class KernelWriterAssembly(KernelWriter):
               vmcnt = min(vmcnt, maxVmcnt)
               #print "wmvcnt=", vmcnt
               module.addSpaceLine()
-              if not atomicAddC:
-                module.addInst("s_waitcnt", "vmcnt(%u)"%vmcnt, "wait C (interleaved) " + vmComment)
+              module.addInst("s_waitcnt", "vmcnt(%u)"%vmcnt, "wait C (interleaved) " + vmComment)
 
-            module.addCode(self.addSumAlphaWithCBeta(kernel, ss, gwvw, elementIdx, vc0, atomicAddC, tmpVgpr, bf16CVTVgprStruct))
+            module.addCode(self.addSumAlphaWithCBeta(kernel, ss, gwvw, elementIdx, vc0, tmpVgpr, bf16CVTVgprStruct))
 
           SaturateTypeInt8 = SaturateCastType.NORMAL
           # Activation
@@ -9070,7 +9064,7 @@ class KernelWriterAssembly(KernelWriter):
     imod.addCode(skipPGR2)
     return imod
 
-  def addSumAlphaWithCBeta(self, kernel, ss, gwvw, elementIdx, vc0, atomicAddC, tmpVgpr, bf16CVTVgprStruct):
+  def addSumAlphaWithCBeta(self, kernel, ss, gwvw, elementIdx, vc0, tmpVgpr, bf16CVTVgprStruct):
     module = Code.Module("addSumAlphaWithCBeta #elementIdx%u, vc0 %u"%(elementIdx, vc0))
     for vi in range(0, gwvw):
       dataV = ss.elementData[elementIdx] + int(vi*ss.cfg.numVgprsPerDataPerVI)
@@ -9141,9 +9135,8 @@ class KernelWriterAssembly(KernelWriter):
 
       elif kernel["ProblemType"]["DestDataType"].isDouble():
         # dataV+0 = new c = old c*beta
-        if not atomicAddC:
-          module.addInst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*2),2), vgpr(dataV+0,2), sgpr("Beta",2), vgpr("ValuC+%u"%(sumIdxV*2),2), \
-              "finalSum = sum*alpha + C*beta")
+        module.addInst("v_fma_f64", vgpr("ValuC+%u"%(sumIdxV*2),2), vgpr(dataV+0,2), sgpr("Beta",2), vgpr("ValuC+%u"%(sumIdxV*2),2), \
+            "finalSum = sum*alpha + C*beta")
 
       # single precision complex
       elif kernel["ProblemType"]["DestDataType"].isSingleComplex():

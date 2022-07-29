@@ -740,9 +740,6 @@ validParameters = {
     # SourceSwap: Optimizes MatrixInstruction store pattern by swapping mfma input order.
     "SourceSwap":                 [False, True],
 
-    # AtomicAddC: If CEqualsD and Beta=1, use atomic add instead of load/store.
-    "AtomicAddC":                 [False, True],
-
     # Following parameters are designed for store scheduling.
     # (store stands for load from C (with beta) and store to C/D)
     #
@@ -1032,7 +1029,6 @@ defaultBenchmarkCommonParameters = [
     {"MaxVgprNumber":             [256]},
     {"StoreRemapVectorWidth":     [ 0 ] },
     {"SourceSwap":                [ False ] },
-    {"AtomicAddC":                [ False ] },
     {"StorePriorityOpt":          [ False ] },
     {"NumElementsPerBatchStore":  [ 0 ] },
     {"StoreSyncOpt":              [ 0 ] },

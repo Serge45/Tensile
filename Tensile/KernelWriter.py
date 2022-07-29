@@ -710,7 +710,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
               readsToWaitAdjust = readsToWait + readsToWaitDTV
               if kernel["PrefetchGlobalRead"]==2:
                 # PGR=2 special cases
-                if (kernel["AtomicAddC"] or not kernel["ProblemType"]["UseBeta"]):
+                if (not kernel["ProblemType"]["UseBeta"]):
                   # no Load C case
                   if not firstIter:
                     # PGR=2 and not firstIter case, __placeholder__ includes num of storeC from previous Iter

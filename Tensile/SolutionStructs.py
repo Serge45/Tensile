@@ -2603,10 +2603,6 @@ class Solution(collections.abc.Mapping):
         reject(state, "MIArchVgpr now only support fp64, fp32, fp16, int8 MatrixInstruction.")
         return
 
-    if state["AtomicAddC"]:
-      reject(state, "AtomicAddC currently disabled")
-      return
-
     #check not support cases and calculate lds resources
     if state["StoreRemapVectorWidth"]:
       if not state["EnableMatrixInstruction"]:

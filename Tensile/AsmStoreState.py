@@ -185,7 +185,7 @@ class StoreState:
             self.sharedColDVgprs = kernelWriter.vgprPool.checkOut(1, "sharedColDVgprs")
             self.singleColDAddrUpdated = False
             self.singleColCAddrUpdated = False
-            if kernel["ProblemType"]["UseBeta"] and not kernel["AtomicAddC"]:
+            if kernel["ProblemType"]["UseBeta"]:
                 self.sharedColCVgprs = kernelWriter.vgprPool.checkOut(1, "sharedColCVgprs")
             else:
                 self.sharedColCVgprs = self.sharedColDVgprs
