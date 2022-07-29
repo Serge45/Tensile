@@ -1544,11 +1544,6 @@ class KernelWriter(metaclass=abc.ABCMeta):
         if not (kernel["BufferLoad"] and  kernel["GuaranteeNoPartialB"]) and not forceNoTileCode:
           module.addComment1("global read addresses: shift b")
           module.addCode(self.graShift(kernel, tensorParametersB))
-      elif kernel["EdgeType"] == "Branch":
-        module.addComment1("global read addresses: branch a")
-        module.addCode(self.graBranch(kernel, tensorParametersA))
-        module.addComment1("global read addresses: branch b")
-        module.addCode(self.graBranch(kernel, tensorParametersB))
 
       # final offsets
       module.addComment1("global read addresses: final offsets a")

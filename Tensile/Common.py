@@ -908,16 +908,6 @@ validParameters = {
     "NonTemporalA":               list(range(0,4)),
     "NonTemporalB":               list(range(0,4)),
 
-    # guard against out of bounds reads
-    # None: don't guard
-    # Branch: use if statements (source only, and doesn't support VW)
-    # ShiftPtr: shift read pointers to be in bounds, then unshift registers (source & assembly),
-    # ShiftPtr does not support very small problem dims < global load vector width since the shift
-    # would move outside the array bounds.
-    # If GLVW==1 or Assert*ElementMultiple for the coalesced dim is > GRVW, then shifting is not
-    # necessary and the shift/unshift code will not be generated
-    "EdgeType":                   [ "Branch", "ShiftPtr", "None" ], # None=don't guard against ou
-
     # Group together unroll iterations inside the unroll loop.
     # For example, InnerUnroll=2 will fetch LDS for two unroll iterations
     "InnerUnroll":                [1,2,4,8,16,32,64],
@@ -959,7 +949,6 @@ validParameters = {
 
 # same parameter for all solution b/c depends only on compiler
 defaultBenchmarkCommonParameters = [
-    {"EdgeType":                  [ "Branch" ] },
     {"InnerUnroll":               [ 1 ] },
     {"KernelLanguage":            [ "Assembly" ] },
     {"LdsPadA":                   [ 0 ] },

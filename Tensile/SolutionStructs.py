@@ -2778,6 +2778,15 @@ class Solution(collections.abc.Mapping):
     if state["UseInstOffsetForGRO"] == -1:
       state["UseInstOffsetForGRO"] = 1 if state["DirectToLds"] else 0
 
+    # guard against out of bounds reads
+    # None: don't guard against ou
+    # ShiftPtr: shift read pointers to be in bounds, then unshift registers (source & assembly),
+    # ShiftPtr does not support very small problem dims < global load vector width since the shift
+    # would move outside the array bounds.
+    # If GLVW==1 or Assert*ElementMultiple for the coalesced dim is > GRVW, then shifting is not
+    # necessary and the shift/unshift code will not be generated
+    state["EdgeType"] = "ShiftPtr" # Use ShiftPtr by default
+
     # Precise bounds check uses the "num_records" field in the buffer to
     # precisely detect when we are inbounds or not.  Only a one-dimensional
     # check is used since this is faster and also for computation we only
