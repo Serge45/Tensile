@@ -502,9 +502,6 @@ class KernelWriterAssembly(KernelWriter):
   def initKernel(self, kernel, tPA, tPB ):
     super(KernelWriterAssembly, self).initKernel(kernel, tPA, tPB)
 
-    dkp = kernel["DisableKernelPieces"]
-    self.do["NullKernel"]  = dkp >= 9 or dkp == -9
-
     self.kernel = kernel
 
     # init these here in case some kernel pieces are disabled for performance exploration:
@@ -2122,9 +2119,6 @@ class KernelWriterAssembly(KernelWriter):
 
     if kernel["StorePriorityOpt"]:
       module.addInst("s_setprio 3", "optimization store")
-
-    if self.do["NullKernel"]:
-      module.addInst("s_endpgm", "Skip the whole kernel")
 
     if self.do["PreLoop"]:
       if self.db["InitSgpr"] & 0x1:

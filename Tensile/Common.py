@@ -779,23 +779,6 @@ validParameters = {
     # Only support for kernel whose totalVgpr counts less than 256 and gcn that has control bit ACC_CD.
     "MIArchVgpr":               [False, True],
 
-    # If positive, each switch includes switches <= the specified switch.
-    # For example 3 will enable NoPostLoop+NoGlobalRead+NoLocalWrite
-    # If negative, setting is precise and will disable only the specified code piece.
-    # intended use is to evaluate which sections of the kernel are taking most of the execution time
-    # 0=Baseline
-    # 1= +NoPostLoop
-    # 2= +NoGlobalRead
-    # 3= +NoLocalWrite
-    # 4= +NoLocalRead
-    # 5= +NoWait +NoSync
-    # 6= +NoMAC
-    # 7= +NoPreLoop+ NoGlobalReadInc
-    # 9= NullKernel
-    # For example set DisableKernelPieces: [0,1,2,3,4,5,6,7,9]
-    #   this will create a set of kernels with progessively more pieces of the kernel disabled
-    "DisableKernelPieces":        list(range(-9,10)),         # disable pieces of the kernel, for performance isolation
-
     # Controls desired width (#elements) for loads from global memory -> LDS.
     # and eliminates the pointer unshift logic
     # -1 : Set GlobalReadVectorWidth =  VectorWidth
@@ -1002,7 +985,6 @@ defaultBenchmarkCommonParameters = [
     {"WavefrontSize":             [ 64 ]},
     {"MatrixInstruction":         [ [] ] },
     {"1LDSBuffer":                [ 0 ] },
-    {"DisableKernelPieces":       [ 0 ] },
     {"DepthU":                    [ -1 ] },
     {"DepthULdsDivisor":          [ 1 ] },
     {"NonTemporalD":              [ 0 ] },
