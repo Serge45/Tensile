@@ -693,8 +693,6 @@ validParameters = {
     "ThreadTile":                 validThreadTiles,
     "MacroTile":                  validMacroTiles,      # MT0 = wg0*tt0, MT1 = wg1*tt1
 
-    # Which instruction to use for MAC: MAD or FMA
-    "MACInstruction":             ["MAD", "FMA"],
     "WavefrontSize":              [32, 64],
 
     # MatrixInstruction: (M x N x K x B)
@@ -1001,7 +999,6 @@ defaultBenchmarkCommonParameters = [
     {"WorkGroup":                 [ [16,16,1]] },
     {"WorkGroupMapping":          [ 8 ] },
     {"ThreadTile":                [ [4,4] ] },
-    {"MACInstruction":            [ "FMA" ]}, # Default to FMA, matches MAC performance and integrates additional flags
     {"WavefrontSize":             [ 64 ]},
     {"MatrixInstruction":         [ [] ] },
     {"1LDSBuffer":                [ 0 ] },

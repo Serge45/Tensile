@@ -3043,11 +3043,6 @@ class Solution(collections.abc.Mapping):
   ########################################
   @ staticmethod
   def getParameterNameAbbreviation( name ):
-    specialValues = {
-      'MACInstruction': '' # Conflicts with MatrixInstruction, but _MAD and _FMA should be enough differentiation for the kernel name.
-    }
-    if name in specialValues: return specialValues[name]
-
     return ''.join([c for c in name if not c.islower()])
 
   ########################################

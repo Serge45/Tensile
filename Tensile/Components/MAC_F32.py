@@ -36,14 +36,14 @@ class MAC_F32_Plain(MAC):
     def __call__(self, writer, m, innerUnroll):
         kernel = writer.kernel
 
-        instruction = "v_mac_f32"
-        if kernel["MACInstruction"] == "FMA":
-            if writer.asmCaps["v_fmac_f32"]:
-                instruction = "v_fmac_f32"
-            elif writer.asmCaps["v_fma_f32"]:
-                instruction = "v_fma_f32"
-            else:
-                raise RuntimeError("FMA instruction specified but not supported on {}".format(kernel["ISA"]))
+        if writer.asmCaps["v_fmac_f32"]:
+            instruction = "v_fmac_f32"
+        elif writer.asmCaps["v_fma_f32"]:
+            instruction = "v_fma_f32"
+        elif writer.asmCaps["v_mac_f32"]:
+            instruction = "v_mac_f32"
+        else:
+            raise RuntimeError("FMA and MAC instructions are not supported on {}".format(kernel["ISA"]))
 
         if not writer.asmCaps[instruction]:
             raise RuntimeError("{} instruction specified but not supported on {}".format(instruction, kernel["ISA"]))

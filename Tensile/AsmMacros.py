@@ -21,17 +21,16 @@
 
 from posixpath import isabs
 from . import Code
-from .Common import globalParameters
+from .Common import globalParameters, printWarning
 
 # format macro
 def macroRegister(name, value):
     return Code.Inst(".set", name, value, "")
 
 class InstMacros():
-    def __init__(self, version, isa, macInst, asmCaps, archCaps, asmBugs, wavefrontSize, vcc):
+    def __init__(self, version, isa, asmCaps, archCaps, asmBugs, wavefrontSize, vcc):
         self.version       = version
         self.isa           = isa
-        self.macInst       = macInst
         self.asmCaps       = asmCaps
         self.archCaps      = archCaps
         self.asmBugs       = asmBugs
@@ -180,17 +179,14 @@ class InstMacros():
     def defineMACInstructionMacros(self):
         macro = Code.Macro("_v_mac_f32", "c:req", "a:req", "b:req")
 
-        if self.macInst == "FMA":
-            if self.asmCaps["v_fmac_f32"]:
-                macro.addInst("v_fmac_f32", "\\c", "\\a", "\\b", "")
-            elif self.asmCaps["v_fma_f32"]:
-                macro.addInst("v_fmac_f32", "\\c", "\\a", "\\b", "\\c", "")
-            else:
-                raise RuntimeError("FMA instruction specified but not supported on {}".format(self.isa))
+        if self.asmCaps["v_fmac_f32"]:
+            macro.addInst("v_fmac_f32", "\\c", "\\a", "\\b", "")
+        elif self.asmCaps["v_fma_f32"]:
+            macro.addInst("v_fmac_f32", "\\c", "\\a", "\\b", "\\c", "")
         elif self.asmCaps["v_mac_f32"]:
             macro.addInst("v_mac_f32", "\\c", "\\a", "\\b", "")
         else:
-            raise RuntimeError("MAC instruction specified but not supported on {}".format(self.isa))
+            raise RuntimeError("FMA and MAC instructions are not supported on {}".format(self.isa))
 
         return macro
 

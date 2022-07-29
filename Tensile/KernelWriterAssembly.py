@@ -1582,7 +1582,7 @@ class KernelWriterAssembly(KernelWriter):
     signature = Component.Signature.find(self)
     module.addCode(signature(self))
 
-    instMacros = InstMacros(version=self.version,isa=self.kernel["ISA"], macInst=self.kernel["MACInstruction"],
+    instMacros = InstMacros(version=self.version,isa=self.kernel["ISA"],
                                  asmCaps=self.asmCaps, archCaps=self.archCaps, asmBugs=self.AsmBugs,
                                  wavefrontSize=self.kernel["WavefrontSize"], vcc=self.vcc)
     module.addCode(instMacros.defineFeatureMacros())
