@@ -241,6 +241,24 @@ class PackData(Component):
     """
     pass
 
+class SIA(Component):
+    """
+    ScheduleIterAlg block.
+    """
+    @abc.abstractmethod
+    def getScheduleInfo(self, writer, kernel, tensorParametersA, tensorParametersB, globalReadIncACode, globalReadIncBCode, uDu, lastLoop, localWriteEndIter):
+        pass
+
+    @abc.abstractmethod
+    def schedeuleGlobalRead(self, writer, kernel, numGlobalReadInsPerIter, numEmptyGlobalReadIncCode, localWriteEndIter, globalReadIncACode, globalReadIncBCode):
+        pass
+
+    @abc.abstractmethod
+    def scheduleLocalWrite(self, writer, kernel, tensorParametersA, tensorParametersB, \
+                           numLocalWriteModPerIter, numLocalWritesPerSched, localWriteEndIter, itemsGRToSchedLater, lastLoadIter, \
+                           uDu, firstIter, lastLc, maxVmcnt):
+        pass
+
 # Importing here allows auto-registry of components in the Components directory.
 # Each file must be listed in __all__ in Components/__init__.py
 # "noqa" prevents linter from complaining here.

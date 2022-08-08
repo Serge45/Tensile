@@ -40,4 +40,5 @@ __all__ = [
     "NotLocalFullTileElements",
     "LraTileAssignment",
     "PackData",
+    "SIA"
     ]
