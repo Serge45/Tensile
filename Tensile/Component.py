@@ -246,17 +246,9 @@ class SIA(Component):
     ScheduleIterAlg block.
     """
     @abc.abstractmethod
-    def getScheduleInfo(self, writer, kernel, tensorParametersA, tensorParametersB, globalReadIncACode, globalReadIncBCode, uDu, lastLoop, localWriteEndIter):
-        pass
-
-    @abc.abstractmethod
-    def schedeuleGlobalRead(self, writer, kernel, numGlobalReadInsPerIter, numEmptyGlobalReadIncCode, localWriteEndIter, globalReadIncACode, globalReadIncBCode):
-        pass
-
-    @abc.abstractmethod
-    def scheduleLocalWrite(self, writer, kernel, tensorParametersA, tensorParametersB, \
-                           numLocalWriteModPerIter, numLocalWritesPerSched, localWriteEndIter, itemsGRToSchedLater, lastLoadIter, \
-                           uDu, firstIter, lastLc, maxVmcnt):
+    def schedIntoIteration(self, writer, kernel, tensorParametersA, tensorParametersB, \
+        localWriteEndIter, uDu, firstIter, lastLoop, lastLc, maxVmcnt, globalReadIncACode, \
+        globalReadIncBCode):
         pass
 
 # Importing here allows auto-registry of components in the Components directory.

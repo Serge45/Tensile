@@ -27,16 +27,14 @@ from ..Component import SIA
 import copy
 from math import ceil
 
-# ScheduleIterAlg
-# Step 1: Find numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode
-
 PRECISION = 100
 class SIA3(SIA):
     kernel = {"ScheduleIterAlg": 3}
     def __call__(self):
         assert(0)
 
-    def getScheduleInfo(self, writer, kernel, tensorParametersA, tensorParametersB, globalReadIncACode, globalReadIncBCode, uDu, lastLoop, localWriteEndIter):
+    def schedIntoIteration(self, writer, kernel, tensorParametersA, tensorParametersB, localWriteEndIter, uDu, firstIter, lastLoop, lastLc, maxVmcnt, globalReadIncACode, globalReadIncBCode):
+        # Get schedule information
         if kernel["EnableMatrixInstruction"]:
             numMfmaBetweenLWandBarrier = getLocalWriteMFMAEnd(writer, kernel, tensorParametersA, tensorParametersB)
             #########
@@ -56,9 +54,7 @@ class SIA3(SIA):
         else:
             numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode = getScheduleParams(kernel)
         numLocalWritesPerSched = writer.numLocalWriteModPerMfma
-        return numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode, numLocalWritesPerSched, localWriteEndIter
-
-    def schedeuleGlobalRead(self, writer, kernel, numGlobalReadInsPerIter, numEmptyGlobalReadIncCode, localWriteEndIter, globalReadIncACode, globalReadIncBCode):
+        # Schedule global read
         if not writer.scheduleGlobalRead:
             itemsGRToSchedLater, lastLoadIter = noSchedGlobalRead(writer, kernel, globalReadIncACode, globalReadIncBCode)
             if kernel["EnableMatrixInstruction"]:
@@ -72,11 +68,7 @@ class SIA3(SIA):
                 itemsGRIncToSched = appendInstToSchedDefault(numEmptyGlobalReadIncCode, globalReadIncACode, globalReadIncBCode)
                 schedNumForIter0, endIter = getSchedNumForIter0Default(itemsGRToSched, itemsGRIncToSched, numGlobalReadInsPerIter, localWriteEndIter)
             lastLoadIter = schedGlobalRead(writer, itemsGRToSched, itemsGRIncToSched, numGlobalReadInsPerIter, schedNumForIter0, endIter)
-        return itemsGRToSchedLater, lastLoadIter
-
-    def scheduleLocalWrite(self, writer, kernel, tensorParametersA, tensorParametersB, \
-                           numLocalWriteModPerIter, numLocalWritesPerSched, localWriteEndIter, itemsGRToSchedLater, lastLoadIter, \
-                           uDu, firstIter, lastLc, maxVmcnt):
+        # Schedule local write
         if not writer.scheduleLocalWrite:
             noSchedLocalWrite(writer, kernel, tensorParametersA, tensorParametersB, localWriteEndIter)
             if kernel["EnableMatrixInstruction"]:
@@ -99,12 +91,11 @@ class SIA2(SIA):
     def __call__(self):
         assert(0)
 
-    def getScheduleInfo(self, writer, kernel, tensorParametersA, tensorParametersB, globalReadIncACode, globalReadIncBCode, uDu, lastLoop, localWriteEndIter):
+    def schedIntoIteration(self, writer, kernel, tensorParametersA, tensorParametersB, localWriteEndIter, uDu, firstIter, lastLoop, lastLc, maxVmcnt, globalReadIncACode, globalReadIncBCode):
+        # Get schedule information
         numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode = getScheduleParams(kernel)
         numLocalWritesPerSched = numLocalWriteModPerIter
-        return numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode, numLocalWritesPerSched, localWriteEndIter
-
-    def schedeuleGlobalRead(self, writer, kernel, numGlobalReadInsPerIter, numEmptyGlobalReadIncCode, localWriteEndIter, globalReadIncACode, globalReadIncBCode):
+        # Schedule global read
         if not writer.scheduleGlobalRead:
             itemsGRToSchedLater, lastLoadIter = noSchedGlobalRead(writer, kernel, globalReadIncACode, globalReadIncBCode)
         else:
@@ -112,11 +103,7 @@ class SIA2(SIA):
             itemsGRIncToSched = appendInstToSchedDefault(numEmptyGlobalReadIncCode, globalReadIncACode, globalReadIncBCode)
             schedNumForIter0, endIter = getSchedNumForIter0Default(itemsGRToSched, itemsGRIncToSched, numGlobalReadInsPerIter, localWriteEndIter)
             lastLoadIter = schedGlobalRead(writer, itemsGRToSched, itemsGRIncToSched, numGlobalReadInsPerIter, schedNumForIter0, endIter)
-        return itemsGRToSchedLater, lastLoadIter
-
-    def scheduleLocalWrite(self, writer, kernel, tensorParametersA, tensorParametersB, \
-                           numLocalWriteModPerIter, numLocalWritesPerSched, localWriteEndIter, itemsGRToSchedLater, lastLoadIter, \
-                           uDu, firstIter, lastLc, maxVmcnt):
+        # Schedule local write
         if not writer.scheduleLocalWrite:
             noSchedLocalWrite(writer, kernel, tensorParametersA, tensorParametersB, localWriteEndIter)
         else:
@@ -132,12 +119,11 @@ class SIA1(SIA):
     def __call__(self):
         assert(0)
 
-    def getScheduleInfo(self, writer, kernel, tensorParametersA, tensorParametersB, globalReadIncACode, globalReadIncBCode, uDu, lastLoop, localWriteEndIter):
+    def schedIntoIteration(self, writer, kernel, tensorParametersA, tensorParametersB, localWriteEndIter, uDu, firstIter, lastLoop, lastLc, maxVmcnt, globalReadIncACode, globalReadIncBCode):
+        # Get schedule information
         numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode = getScheduleParams(kernel)
         numLocalWritesPerSched = numLocalWriteModPerIter
-        return numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode, numLocalWritesPerSched, localWriteEndIter
-
-    def schedeuleGlobalRead(self, writer, kernel, numGlobalReadInsPerIter, numEmptyGlobalReadIncCode, localWriteEndIter, globalReadIncACode, globalReadIncBCode):
+        # Schedule global read
         if not writer.scheduleGlobalRead:
             itemsGRToSchedLater, lastLoadIter = noSchedGlobalRead(writer, kernel, globalReadIncACode, globalReadIncBCode)
         else:
@@ -145,11 +131,7 @@ class SIA1(SIA):
             itemsGRIncToSched = appendInstToSchedDefault(numEmptyGlobalReadIncCode, globalReadIncACode, globalReadIncBCode)
             schedNumForIter0, endIter = getSchedNumForIter0Default(itemsGRToSched, itemsGRIncToSched, numGlobalReadInsPerIter, localWriteEndIter)
             lastLoadIter = schedGlobalRead(writer, itemsGRToSched, itemsGRIncToSched, numGlobalReadInsPerIter, schedNumForIter0, endIter)
-        return itemsGRToSchedLater, lastLoadIter
-
-    def scheduleLocalWrite(self, writer, kernel, tensorParametersA, tensorParametersB, \
-                           numLocalWriteModPerIter, numLocalWritesPerSched, localWriteEndIter, itemsGRToSchedLater, lastLoadIter, \
-                           uDu, firstIter, lastLc, maxVmcnt):
+        # Schedule local write
         if not writer.scheduleLocalWrite:
             noSchedLocalWrite(writer, kernel, tensorParametersA, tensorParametersB, localWriteEndIter)
         else:
@@ -174,7 +156,6 @@ def getScheduleParams(kernel):
     numEmptyGlobalReadIncCode = numGlobalReadInsPerIter - 1
     return numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode
 
-# Only for kernel["EnableMatrixInstruction"] and kernel["ScheduleIterAlg"] == 3
 def getLocalWriteMFMAEnd(writer, kernel, tensorParametersA, tensorParametersB):
     numMfmaPerIter = writer.numMfmaPerIter
     #########
@@ -690,6 +671,7 @@ def prepareLWInstToSched(writer, kernel, numLocalWritesPerSched):
         # add dummy at the top of the list
         itemsLWToSched = tmpList + itemsLWToSched
     # extend localWrite by inserting empty Module
+    # See getNumLocalWritePerMfma for how this work
     itemsLWToSchedTemp = []
     for i in range(len(itemsLWToSched)-1):
         itemsLWToSchedTemp.append(itemsLWToSched.pop(0))

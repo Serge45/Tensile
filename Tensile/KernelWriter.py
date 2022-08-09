@@ -131,16 +131,9 @@ class KernelWriter(metaclass=abc.ABCMeta):
       self.globalReadBCode = Code.StructuredModule() # empty
 
     siaComponent = Component.SIA.find(self)
-    numGlobalReadInsPerIter, numLocalWriteModPerIter, numEmptyGlobalReadIncCode, numLocalWritesPerSched, localWriteEndIter = \
-      siaComponent.getScheduleInfo(self, kernel, tensorParametersA, tensorParametersB, globalReadIncACode, globalReadIncBCode, \
-        uDu, lastLoop, localWriteEndIter)
-
-    itemsGRToSchedLater, lastLoadIter = siaComponent.schedeuleGlobalRead(self, kernel, numGlobalReadInsPerIter, \
-      numEmptyGlobalReadIncCode, localWriteEndIter, globalReadIncACode, globalReadIncBCode)
-
-    siaComponent.scheduleLocalWrite(self, kernel, tensorParametersA, tensorParametersB, \
-      numLocalWriteModPerIter, numLocalWritesPerSched, localWriteEndIter, itemsGRToSchedLater, lastLoadIter, \
-      uDu, firstIter, lastLc, maxVmcnt)
+    siaComponent.schedIntoIteration(self, kernel, tensorParametersA, tensorParametersB, \
+      localWriteEndIter, uDu, firstIter, lastLoop, lastLc, maxVmcnt, globalReadIncACode, \
+      globalReadIncBCode)
 
     if grBackup is not None:
       del grBackup
