@@ -133,8 +133,9 @@ class Item:
   Base class for Modules, Instructions, etc
   Item is a atomic collection of or more instructions and commentsA
   """
-  def __init__(self):
+  def __init__(self, name=""):
     self.parent = ""
+    self.name = name
 
   def toStr(self):
     return str(self)
@@ -150,7 +151,7 @@ class Item:
 
 class SignatureArgument(Item):
   def __init__(self, name, size, valueKind, valueType, isAddrSpaceQual = None):
-    self.name      = name
+    super().__init__(name)
     self.size      = size
     self.valueKind = valueKind
     self.valueType = valueType
@@ -193,7 +194,7 @@ class SignatureArgumentV3(SignatureArgument):
 
 class SignatureKernelDescriptorV3(Item):
   def __init__(self, target, accumOffset, totalVgprs, totalSgprs, groupSegSize, hasWave32, waveFrontSize, reserved, sgprWg, vgprWi, name):
-    self.name  = name  # kernel name
+    super().__init__(name)
     self.target = target
     self.accumOffset = accumOffset
     self.totalVgprs = totalVgprs
@@ -245,7 +246,7 @@ class SignatureKernelDescriptorV3(Item):
 
 class SignatureCodeMetaV3(Item):
   def __init__(self, groupSegSize, totalVgprs, totalSgprs, flatWgSize, waveFrontSize, name):
-    self.name = name
+    super().__init__(name)
     self.groupSegSize = groupSegSize
     self.totalVgprs = totalVgprs
     self.totalSgprs = totalSgprs
@@ -298,7 +299,7 @@ class SignatureCodeMetaV3(Item):
 
 class Signature(Item):
   def __init__(self, codeObjectVersion, commentHeader, name=""):
-    self.name    = name
+    super().__init__(name)
     self.codeObjectVersion = codeObjectVersion
     self.commentHeader = TextBlock(slash(commentHeader))
     self.kernelDescriptor = None
@@ -353,7 +354,7 @@ class Module(Item):
   make intelligent and legal transformations.
   """
   def __init__(self, name=""):
-    self.name     = name
+    super().__init__(name)
     self.itemList = []
     self.tempVgpr = None
 
@@ -602,7 +603,7 @@ def moduleSetNoComma(module, noComma=False):
 
 class Macro(Item):
   def __init__(self):
-    self.name = ""
+    super().__init__("")
     self.itemList = []
     self.macro = ""
 
@@ -697,6 +698,7 @@ class Label (Item):
   Label that can be the target of a jump.
   """
   def __init__(self, label, comment):
+    super().__init__("")
     assert(isinstance(label, int) or isinstance(label, str))
     self.label = label
     self.comment = comment
@@ -723,9 +725,9 @@ class TextBlock(Item):
   An unstructured block of text that can contain comments and instructions
   """
   def __init__(self,text):
+    super().__init__(text)
     assert(isinstance(text, str))
     self.text = text
-    self.name = text
 
   def __str__(self):
     return self.text
@@ -745,6 +747,7 @@ class Inst(Item):
   Currently just stores text+comment but over time may grow
   """
   def __init__(self, *args):
+    super().__init__("")
     params = args[0:len(args)-1]
     self.comment = args[len(args)-1]
     assert(isinstance(self.comment, str))
@@ -794,7 +797,7 @@ class Inst(Item):
 
 class CompoundInst(Item):  # FIXME: Workaround for WaitCnt
   def __init__(self, name=""):
-    self.name = name
+    super().__init__(name)
     self.instList = []
 
   def addInst(self, *args):
