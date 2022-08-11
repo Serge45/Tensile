@@ -21,7 +21,7 @@
 
 from math import log
 from enum import Enum
-from .Code import HolderContainer, RegisterContainer, Module, Inst, Item
+from .Code import HolderContainer, RegisterContainer, Module, Inst, Item, BranchInst
 from .Common import printExit
 import random
 import string
@@ -331,7 +331,7 @@ def sBranchIfZero(sgprName, computeDataType, tmpSgpr, laneSC, label, waveFrontSi
         module.addInst("v_cmp_eq_f64", vcc, sgpr(sgprVar, 2), 0.0, "%s.imag == 0.0 ?" % sgprStr)
         module.addInst(f"s_and_b{waveFrontSize}", sgpr(tmpSgpr, laneSC), vcc, sgpr(tmpSgpr, laneSC), "%s == 0 ?" % sgprStr)
         module.addInst(f"s_cmp_eq_u{waveFrontSize}", sgpr(tmpSgpr, laneSC), hex(0), "branch if %s == 0" % sgprStr)
-        module.addInst("s_cbranch_scc0 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_scc0 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr))
     elif computeDataType.isDouble():
         module.addInst("v_cmp_eq_f64", vcc, sgpr(sgprName, 2), 0.0, "%s == 0.0 ?" % sgprStr)
         module.addInst("s_cbranch_vccnz %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
@@ -341,13 +341,13 @@ def sBranchIfZero(sgprName, computeDataType, tmpSgpr, laneSC, label, waveFrontSi
         module.addInst("v_cmp_eq_f32", vcc, sgpr(sgprVar), 0.0, "%s.imag == 0.0f ?" % sgprStr)
         module.addInst(f"s_and_b{waveFrontSize}", sgpr(tmpSgpr, laneSC), vcc, sgpr(tmpSgpr, laneSC), "%s == 0 ?" % sgprStr)
         module.addInst(f"s_cmp_eq_u{waveFrontSize}", sgpr(tmpSgpr, laneSC), hex(0), "branch if %s == 0" % sgprStr)
-        module.addInst("s_cbranch_scc0 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_scc0 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr))
     elif computeDataType.isSingle() or computeDataType.isHalf() or computeDataType.isBFloat16():
         module.addInst("v_cmp_eq_f32", vcc, sgpr(sgprName), 0.0, "%s == 0.0f ?" % sgprStr)
         module.addInst("s_cbranch_vccnz %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
     elif computeDataType.isInt32(): # int32
         module.addInst("s_cmp_eq_u32", sgpr(sgprName), 0, "%s == 0 ?" % sgprStr)
-        module.addInst("s_cbranch_scc1 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_scc1 %s" % (label.getLabelName()), "branch if %s == 0" % sgprStr))
     else:
       printExit("Unsupported compute data type: %s" % str(computeDataType))
     return module

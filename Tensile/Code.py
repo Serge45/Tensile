@@ -868,6 +868,10 @@ class WaitCnt(CompoundInst):
     self.instructions()
     return super().__str__()
 
+class BranchInst(Inst):
+  def __init__(self, *args):
+    super().__init__(*args)
+
 # uniq type that can be used in Module.countType
 class GlobalReadInst (Inst):
   def __init__(self,*args):

@@ -2098,7 +2098,7 @@ class KernelWriterAssembly(KernelWriter):
     for i in range(0, self.numSgprSizesSum):
       module.addInst("s_mul_i32", sgpr(tmpSgpr), sgpr("SizesSum+%u"%(i)), sgpr(tmpSgpr), "check summation size")
     module.addInst("s_cmp_eq_u32", sgpr(tmpSgpr), hex(0), "skip buffer deref is size of summation is 0")
-    module.addInst("s_cbranch_scc1", endCheckLabel.getLabelName(), "skip buffer deref is size of summation is 0")
+    module.addCode(Code.BranchInst("s_cbranch_scc1", endCheckLabel.getLabelName(), "skip buffer deref is size of summation is 0"))
 
     module.addCode(sBranchIfZero("Alpha", kernel["ProblemType"]["ComputeDataType"], tmpSgpr, laneSC, endCheckLabel, \
                                  kernel['WavefrontSize'], self.vcc))
@@ -2248,31 +2248,31 @@ class KernelWriterAssembly(KernelWriter):
       endCheckLabel = Code.Label("AlphaNonZero", "")
       if kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
         module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha.real == 0.0 ?")
-        module.addInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0")
+        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0"))
         module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha+2", 2), 0.0, "Alpha.imag == 0.0 ?")
-        module.addInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0")
+        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0"))
 
       elif kernel["ProblemType"]["ComputeDataType"].isDouble():
         module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha == 0.0 ?")
-        module.addInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha != 0")
+        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha != 0"))
 
       elif kernel["ProblemType"]["ComputeDataType"].isSingleComplex():
         module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha.real == 0.0f ?")
-        module.addInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0")
+        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0"))
         module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha+1"), 0.0, "Alpha.imag == 0.0f ?")
-        module.addInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0")
+        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0"))
 
       # AlphaType is f32 or two-concated-f16, or two-concated-bf16(not support)
       elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
            kernel["ProblemType"]["ComputeDataType"].isHalf() or \
            kernel["ProblemType"]["ComputeDataType"].isBFloat16():
         module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha == 0.0f ?")
-        module.addInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if alpha != 0")
+        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if alpha != 0"))
 
       # AlphaType is int32
       else:
         module.addInst("s_cmp_eq_u32", sgpr("Alpha"), 0, "Alpha == 0 ?")
-        module.addInst("s_cbranch_scc0", endCheckLabel.getLabelName(), "branch if alpha != 0")
+        module.addCode(Code.BranchInst("s_cbranch_scc0", endCheckLabel.getLabelName(), "branch if alpha != 0"))
 
       # Conditional set summation dimensions to 0 on SCC==1
       for i in range(0, self.numSgprSizesSum):
@@ -3857,19 +3857,19 @@ class KernelWriterAssembly(KernelWriter):
     module.addInst("s_getpc_B64", sgpr(tmpSgpr,2), "addr of next instr")
     module.addInst("s_add_i32",  sgpr(tmpSgpr+2), "%s"%labelName, hex(4), "target branch offset")
     module.addInst("s_cmp_ge_i32", sgpr(tmpSgpr+2), hex(0), "check positive or negative")
-    module.addInst("s_cbranch_scc1 %s" % positiveLabel.getLabelName(), "jump when positive")
+    module.addCode(Code.BranchInst("s_cbranch_scc1", positiveLabel.getLabelName(), "jump when positive"))
 
     # negative offset
     module.addInst("s_abs_i32",  sgpr(tmpSgpr+2), sgpr(tmpSgpr+2), "abs offset")
     module.addInst("s_sub_u32",  sgpr(tmpSgpr),   sgpr(tmpSgpr),   sgpr(tmpSgpr+2), "sub target branch offset")
     module.addInst("s_subb_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "sub high and carry")
-    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
+    module.addCode(Code.BranchInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName))
 
     # positive offset
     module.addCode(positiveLabel)
     module.addInst("s_add_u32",  sgpr(tmpSgpr), sgpr(tmpSgpr), sgpr(tmpSgpr+2), "add target branch offset")
     module.addInst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "add high and carry")
-    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
+    module.addCode(Code.BranchInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName))
     return module
 
   ##############################################################################
@@ -3889,7 +3889,7 @@ class KernelWriterAssembly(KernelWriter):
     # positive offset
     module.addInst("s_add_u32",  sgpr(tmpSgpr), sgpr(tmpSgpr), sgpr(tmpSgpr+2), "add target branch offset")
     module.addInst("s_addc_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "add high and carry")
-    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
+    module.addCode(Code.BranchInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName))
     return module
 
   ##############################################################################
@@ -3910,7 +3910,7 @@ class KernelWriterAssembly(KernelWriter):
     module.addInst("s_abs_i32",  sgpr(tmpSgpr+2), sgpr(tmpSgpr+2), "abs offset")
     module.addInst("s_sub_u32",  sgpr(tmpSgpr),   sgpr(tmpSgpr),   sgpr(tmpSgpr+2), "sub target branch offset")
     module.addInst("s_subb_u32", sgpr(tmpSgpr+1), sgpr(tmpSgpr+1), 0, "sub high and carry")
-    module.addInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName)
+    module.addCode(Code.BranchInst("s_setpc_b64", sgpr(tmpSgpr,2), "branch to %s"%labelName))
     return module
 
   ##############################################################################
@@ -3921,7 +3921,7 @@ class KernelWriterAssembly(KernelWriter):
   def longBranchScc0(self, label, positiveOnly=False, negativeOnly=False):
     module = Code.Module("longBranchScc0 label %s"%label)
     noBranchLabel = Code.Label(self.labels.getUniqueNamePrefix("NoBranch"), "")
-    module.addInst("s_cbranch_scc1 %s" % noBranchLabel.getLabelName(), "Only branch on scc0")
+    module.addCode(Code.BranchInst("s_cbranch_scc1", noBranchLabel.getLabelName(), "Only branch on scc0"))
     if positiveOnly:
       module.addCode(self.longBranchPositive(label))
     elif negativeOnly:
@@ -3939,7 +3939,7 @@ class KernelWriterAssembly(KernelWriter):
   def longBranchScc1(self, label, positiveOnly=False, negativeOnly=False):
     module = Code.Module("longBranchScc1 label %s"%label)
     noBranchLabel = Code.Label(self.labels.getUniqueNamePrefix("NoBranch"), "")
-    module.addInst("s_cbranch_scc0 %s" % noBranchLabel.getLabelName(), "Only branch on scc1")
+    module.addCode(Code.BranchInst("s_cbranch_scc0 %s" % noBranchLabel.getLabelName(), "Only branch on scc1"))
     if positiveOnly:
       module.addCode(self.longBranchPositive(label))
     elif negativeOnly:
@@ -4219,9 +4219,9 @@ class KernelWriterAssembly(KernelWriter):
           hex(0), "numIter%s == 0"%loopChar )
       module.addInst("s_mov_b32", sgpr("OrigLoopCounter"), 0, \
           "repurpose to count each localRead increment")
-      module.addInst("s_cbranch_scc1 %s"\
-          % skipTailLoopLabel, \
-          "skip to end of tail loop b/c numIter==0")
+      module.addCode(Code.BranchInst("s_cbranch_scc1", \
+          skipTailLoopLabel, \
+          "skip to end of tail loop b/c numIter==0"))
 
     ########################################
     # Unrolled Loop
@@ -4314,8 +4314,8 @@ class KernelWriterAssembly(KernelWriter):
           loopCounter, \
           hex(endCounter), \
           "LoopCounter%s < EndCounter"%(loopChar) )
-      module.addInst("s_cbranch_scc1 %s"%loopLabelEnd.getLabelName(), \
-          "do not enter Loop%s"%loopChar )
+      module.addCode(Code.BranchInst("s_cbranch_scc1", loopLabelEnd.getLabelName(), \
+          "do not enter Loop%s"%loopChar ))
 
       module.addInst("s_mov_b32", sgpr("OrigLoopCounter"), 0, \
           "repurpose to count each localRead increment")
@@ -4368,7 +4368,7 @@ class KernelWriterAssembly(KernelWriter):
               hex(endCounter-1), \
               "LoopCounter%s < EndCounter"%(loopChar) )
           toPGR1 = Code.Label.getFormatting(self.labels.getName("toPGR1"))
-          module.addInst("s_cbranch_scc1 %s"%toPGR1, "PGR=2 but only 1 loop, toPGR1")
+          module.addCode(Code.BranchInst("s_cbranch_scc1", toPGR1, "PGR=2 but only 1 loop, toPGR1"))
 
         module.addInst("s_cmp_le_u32", \
             loopCounter, \
@@ -4378,8 +4378,8 @@ class KernelWriterAssembly(KernelWriter):
         if kernel["PrefetchGlobalRead"]==2 and (not kernel["SuppressNoLoadLoop"]) and kernel["ExpandPointerSwap"]:
           # PGR=2 and EPS and no SuppressNoLoadLoop case, need to jump to EvenExit
           jumpLabel = Code.Label("LoopEnd%s_evenexit"%(loopChar), "" )
-        module.addInst("s_cbranch_scc1 %s"%jumpLabel.getLabelName(), \
-            "do not enter Loop%s"%loopChar )
+        module.addCode(Code.BranchInst("s_cbranch_scc1", jumpLabel.getLabelName(), \
+            "do not enter Loop%s"%loopChar ))
 
       if not noLabelGen:
         module.addCode(loopLabelBegin)
@@ -4532,19 +4532,18 @@ class KernelWriterAssembly(KernelWriter):
     if not finalLoop:
       if nonFinalJumpNeeded:
         # just an exit check, else fall through to the next loop copy
-        module.addInst("s_cbranch_scc1 %s"%(jumpLabel.getLabelName()), "exit Loop%s"%loopChar )
+        module.addCode(Code.BranchInst("s_cbranch_scc1", jumpLabel.getLabelName(), "exit Loop%s"%loopChar ))
     else: #finalLoop:
 
       if tailLoop and kernel.enabledSplitLDS:
         tailLoopLabelEnd = Code.Label.getFormatting(
           "TailLoopEnd%s%s"%(loopChar, "_G2L%s"%(kernel["DepthULdsDivisor"]-1) if kernel.enabledSplitLDS else "") )
-        module.addInst("s_cbranch_scc1", tailLoopLabelEnd, "break Loop%s"%loopChar)
+        module.addCode(Code.BranchInst("s_cbranch_scc1", tailLoopLabelEnd, "break Loop%s"%loopChar))
         thresForNextSubLoop = (uDu+1)*(kernel["_DepthULds"])
         module.addInst("s_cmp_ge_u32", sgpr("OrigLoopCounter"), thresForNextSubLoop,
           "OrigLoopCounter >= %u (G2L buffer %u/%u)"%(thresForNextSubLoop, uDu, kernel["DepthULdsDivisor"]) )
 
-      module.addInst("%s %s"%(finalJump, loopLabelBegin.getLabelName()), \
-          "restart Loop%s"%(loopChar ))
+      module.addCode(Code.BranchInst(finalJump, loopLabelBegin.getLabelName(), "restart Loop%s"%(loopChar)))
 
       if not tailLoop and loopIdx == self.unrollIdx:
         oddIterPreCode = Code.Module()
@@ -4600,8 +4599,8 @@ class KernelWriterAssembly(KernelWriter):
 
         # if secondCode exist, add jump to skip secondCode
         if secondCode.count():
-          module.addInst("s_branch %s"%loopLabelEnd.getLabelName(), \
-              "exit unroll loop%s (and skip second exit code)"%(loopChar ))
+          module.addCode(Code.BranchInst("s_branch", loopLabelEnd.getLabelName(), \
+              "exit unroll loop%s (and skip second exit code)"%(loopChar)))
         module.addCode(secondPreCode)
         module.addCode(secondCode)
 
@@ -5016,15 +5015,15 @@ class KernelWriterAssembly(KernelWriter):
           module.addInst("s_setprio 0", "optimization store")
         if self.doShadowInit:
           shadowName = Code.Label.getFormatting("ShadowInitStart")
-          module.addInst("s_cbranch_scc1 %s"\
-              % shadowName, \
-              "skip to ShadowInitStart iter b/c numIter==0")
+          module.addCode(Code.BranchInst("s_cbranch_scc1", \
+              shadowName, \
+              "skip to ShadowInitStart iter b/c numIter==0"))
         else:
           loopChar = self.indexChars[ \
               kernel["ProblemType"]["IndicesSummation"][self.unrollIdx]]
           labelName = Code.Label.getFormatting("LoopEnd%s"%loopChar)
-          module.addInst("s_cbranch_scc1 %s" % labelName,
-              "skip to unrollLoop end loop%s iter b/c numIter==0" % loopChar)
+          module.addCode(Code.BranchInst("s_cbranch_scc1", labelName, \
+              "skip to unrollLoop end loop%s iter b/c numIter==0" % loopChar))
     elif isOptNLL:
       skipOptNLL = Code.Label("OptNLL_End", "")
       tmpSgpr = self.getTmpSgpr(2).idx()
@@ -5067,12 +5066,12 @@ class KernelWriterAssembly(KernelWriter):
           module.addInst("s_mov_b32", sgpr(tmpSgpr+0), "0x00000000", "lsb of real part of 1.0")
           module.addInst("s_mov_b32", sgpr(tmpSgpr+1), "0x3ff00000", "msb of real part of 1.0")
           module.addInst("s_cmp_eq_u64", sgpr("Alpha",2), sgpr(tmpSgpr,2), "Alpha.real == 1.0 ?")
-          module.addInst("s_cbranch_scc0", skipOptNLL.getLabelName(), "branch if alpha.real != 1")
+          module.addCode(Code.BranchInst("s_cbranch_scc0", skipOptNLL.getLabelName(), "branch if alpha.real != 1"))
           module.addInst("s_mov_b32", sgpr(tmpSgpr+0), "0x00000000", "lsb of imag part of 0.0")
           module.addInst("s_mov_b32", sgpr(tmpSgpr+1), "0x00000000", "msb of imag part of 0.0")
           module.addInst("s_cmp_eq_u64", sgpr("Alpha+2",2), sgpr(tmpSgpr,2), "Alpha.imag == 0.0 ?")
 
-        module.addInst("s_cbranch_scc0", skipOptNLL.getLabelName(), "branch if alpha != 1")
+        module.addCode(Code.BranchInst("s_cbranch_scc0", skipOptNLL.getLabelName(), "branch if alpha != 1"))
         module.addSpaceLine()
 
       module.addCode(self.checkIsEdge(kernel, tmpSgpr, skipOptNLL))
@@ -5087,7 +5086,7 @@ class KernelWriterAssembly(KernelWriter):
                   kernel["DepthU"], tmpSgpr+2, 2))
         module.addInst("s_cmp_eq_u32", sgpr(tmpSgpr+1), \
             hex(0), "numIter%s == 0"%loopChar )
-        module.addInst("s_cbranch_scc0", skipOptNLL.getLabelName(), "skip if tail loop required")
+        module.addCode(Code.BranchInst("s_cbranch_scc0", skipOptNLL.getLabelName(), "skip if tail loop required"))
 
       # save the vgprPool for generating the normal path.
       # dump the 'dirty' pool upon s_endpgm and swap back the 'clean' pool
@@ -7498,7 +7497,7 @@ class KernelWriterAssembly(KernelWriter):
         for i in range(1, self.bpeCinternal//self.bpr):
           module.addInst("s_or_b32", sgpr(tmpSgpr), sgpr("Beta+%u"%i), sgpr(tmpSgpr), "tmp |= Beta[%u] " % i)
         module.addInst("s_cmpk_eq_u32", sgpr(tmpSgpr), hex(0), "Beta == 0")
-      module.addInst("s_cbranch_scc0", betaLabelName, "Branch if Beta is not zero")
+      module.addCode(Code.BranchInst("s_cbranch_scc0", betaLabelName, "Branch if Beta is not zero"))
     module.addSpaceLine()
     return module
 
@@ -7541,7 +7540,7 @@ class KernelWriterAssembly(KernelWriter):
       module.addInst("s_cmpk_gt_u32", sgpr(tmpS0), hex(0), "rMT0 > 0")
       if self.db["ForceEdgeStores"]:
         module.addInst("s_cmp_eq_u32", sgpr(tmpS0), sgpr(tmpS0), "ForceEdgeStores!")
-      module.addInst("s_cbranch_scc1", isEdgeTargetLabel, "jump if edges required")
+      module.addCode(Code.BranchInst("s_cbranch_scc1", isEdgeTargetLabel, "jump if edges required"))
 
     # check edge1 ###
     # TODO-packed - this only needs to change to handle packing into C1 index
@@ -7560,7 +7559,7 @@ class KernelWriterAssembly(KernelWriter):
     # if rMT1 > 0 goto label_B?_E1
     if self.do["EdgeWrite"]:
       module.addInst("s_cmpk_gt_u32", sgpr(tmpS0), hex(0), "rMT1 > 0")
-      module.addInst("s_cbranch_scc1", isEdgeTargetLabel, "jump if edges required")
+      module.addCode(Code.BranchInst("s_cbranch_scc1", isEdgeTargetLabel, "jump if edges required"))
 
     return module
 
@@ -7884,7 +7883,7 @@ class KernelWriterAssembly(KernelWriter):
         del getTmpSgprClass
 
         # TODO - if this is the last tile, don't need to jump to next instruction
-        module.addInst("s_branch", endLabel.getLabelName(), "jump to end")
+        module.addCode(Code.BranchInst("s_branch", endLabel.getLabelName(), "jump to end"))
         del ss
 
     # End label
@@ -8790,7 +8789,7 @@ class KernelWriterAssembly(KernelWriter):
             if index != 0:
               enumIndex = ActivationType.getEnumIndex(activationEnumStrList[index])
               module.addInst("s_cmpk_eq_u32", sgpr("ActivationType"), enumIndex, "activationType == %u"%enumIndex)
-              module.addInst("s_cbranch_scc1", activationLabelModule.getLabelName(), "Branch if true")
+              module.addCode(Code.BranchInst("s_cbranch_scc1", activationLabelModule.getLabelName(), "Branch if true"))
         else:
           activationEnumStrList.append(str(kernel["ProblemType"]["ActivationType"]).lower())
       else:
@@ -9006,7 +9005,7 @@ class KernelWriterAssembly(KernelWriter):
           module.addInst("s_barrier", "debug")
 
         if (index < (len(activationLabelModules) - 1)):
-          module.addInst("s_branch", activationLabelEndModule.getLabelName(), "")
+          module.addCode(Code.BranchInst("s_branch", activationLabelEndModule.getLabelName(), ""))
       if len(activationLabelModules) > 1:
         module.addCode(activationLabelEndModule)
 
@@ -9049,7 +9048,7 @@ class KernelWriterAssembly(KernelWriter):
     loopCounter = self.loopCounter(kernel, self.unrollIdx)
     imod.addInst("s_cmp_eq_u32 %s %s" %(loopCounter, hex(1)),"PGR=2 but only 1 loop")
     skipPGR2 = Code.Label(self.labels.getName("skipPGR2"), "")
-    imod.addInst("s_cbranch_scc1", skipPGR2.getLabelName(),"PGR=2 but only 1 loop")
+    imod.addCode(Code.BranchInst("s_cbranch_scc1", skipPGR2.getLabelName(),"PGR=2 but only 1 loop"))
     return imod
 
   def closePrefetchGlobalRead2(self, kernel):
@@ -9216,7 +9215,7 @@ class KernelWriterAssembly(KernelWriter):
     #scc0or1 = 0 if isNGLL else 1
     #oddOrEven = "Even" if isNGLL else "Odd"
     module.addInst("s_and_b32",sgpr(tmpSgpr), sgpr("OrigLoopCounter"), 1, "test if OrigLoopCounter is Odd ?")
-    module.addInst("s_cbranch_scc0", evenStartLabelName, "Skip odd code if OrigLoopCounter is Even")
+    module.addCode(Code.BranchInst("s_cbranch_scc0", evenStartLabelName, "Skip odd code if OrigLoopCounter is Even"))
 
     return module
 
@@ -9229,7 +9228,7 @@ class KernelWriterAssembly(KernelWriter):
     evenStartLabelName = Code.Label.getFormatting("EvenStart" + name)
     evenEndLabelName = Code.Label.getFormatting("EvenEnd" + name)
     # odd exit code
-    module.addInst("s_branch", evenEndLabelName, "Skip even code")
+    module.addCode(Code.BranchInst("s_branch", evenEndLabelName, "Skip even code"))
     # generate even start label
     module.addCode(Code.Label(evenStartLabelName, ""))
     return module
@@ -9582,8 +9581,8 @@ class KernelWriterAssembly(KernelWriter):
         afterDump = self.labels.getUniqueName()
         afterDump = Code.Label(afterDump, "skip debug target")
         module.addInst("s_cmp_lt_u32", sgpr("DebugKernelItems"), 16,  "")
-        module.addInst("s_cbranch_scc0", afterDump.getLabelName(), \
-                       "skip if already wrote enough work-items" )
+        module.addCode(Code.BranchInst("s_cbranch_scc0", afterDump.getLabelName(), \
+                       "skip if already wrote enough work-items" ))
         module.addInst("s_add_u32", sgpr("DebugKernelItems"), \
                        sgpr("DebugKernelItems"), \
                        hex(1), "inc items written" )

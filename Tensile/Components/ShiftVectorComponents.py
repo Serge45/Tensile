@@ -199,7 +199,7 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
         for r in range(1, glvw):
             module.addInst("v_cmp_eq_u32", writer.vcc, vgpr(rReg), hex(r), "wgMT%%VW == %u"%r )
             module.addInst("s_cbranch_vccnz", glvwLabels[(r-1)].getLabelName(), "branch to shift d%u r=%u"%(tP["idx"], r))
-        module.addInst("s_branch", glvwLabels[glvw-1].getLabelName(), "no shifting" )
+        module.addCode(Code.BranchInst("s_branch", glvwLabels[glvw-1].getLabelName(), "no shifting" ))
         writer.vgprPool.checkIn(rReg)
 
         _, arch2acc = writer.AccToArchMapper(kernel)
@@ -279,7 +279,7 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
                             all1mask = "0xFFFFFFFF" if (kernel["WavefrontSize"] == 32) else "0xFFFFFFFFFFFFFFFF"
                             module.addInst("s_mov_b{}".format(kernel["WavefrontSize"]), sgpr(tmpSgpr, writer.laneSGPRCount), all1mask, "to restore all threads active")
                             module.addInst("s_or_saveexec_b{}".format(kernel["WavefrontSize"]), writer.vcc, sgpr(tmpSgpr,writer.laneSGPRCount), "all threads active")
-                            module.addInst("s_branch", glvwLabels[glvw-1].getLabelName(), "done shifting" )
+                            module.addCode(Code.BranchInst("s_branch", glvwLabels[glvw-1].getLabelName(), "done shifting" ))
                             module.addSpaceLine()
 
         module.addCode(glvwLabels[glvw-1])
