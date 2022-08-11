@@ -23,18 +23,23 @@ from . import Code
 from .Common import printExit
 
 import re
-
-branchInstList = ["s_setpc_b64", "s_branch", "s_cbranch_scc0", "s_cbranch_scc1", "s_cbranch_vccz"]
-
+from typing import NamedTuple
 
 def GetAssignmentDict(module):
     assignmentDict = dict()
     GetAssignmentDictIter(module, assignmentDict)
     return assignmentDict
 
-def RemoveDuplicateAssignment(module, assignmentDict):
-    gprAssignValue = dict()
-    RemoveDuplicateAssignmentIter(module, assignmentDict, gprAssignValue)
+def BuildGraph(module, vgprMax, sgprMax, assignmentDict):
+    graph = dict()
+    graph["v"] = [[] for _ in range(vgprMax)]
+    graph["s"] = [[] for _ in range(sgprMax)]
+    graph["m"] = [[] for _ in range(1)]
+    RecordGraph(module, graph, assignmentDict)
+    return graph
+
+def RemoveDuplicateAssignment(graph):
+    RemoveDuplicateAssignmentGPR(graph, "s")
 
 ################################################################################
 ################################################################################
@@ -61,57 +66,90 @@ def GetAssignmentDictIter(module, assignmentDict):
                         num = assignmentDict[m[0]] + int(m[1])
                         assignmentDict[item.params[0]] = num
 
-# Currently only removes s_mov_b32, does not support 2 sgpr at lvalue
-def RemoveDuplicateAssignmentIter(module, assignmentDict, gprAssignValue):
-    index = 0
-    while index < len(module.items()):
-        item = module.items()[index]
+class graphProp(NamedTuple):
+    lrv: int = 0
+    item: Code.Item = None
+
+def RecordGraph(module, graph, assignmentDict):
+    for item in module.items():
         if isinstance(item, Code.Module):
-            RemoveDuplicateAssignmentIter(item, assignmentDict, gprAssignValue)
-        elif isinstance(item, Code.Inst):
-            if item.inst in branchInstList: # Reset dict
-                gprAssignValue.clear()
-            elif item.inst == "s_mov_b32":
-                gpr      = item.params[0]
-                gprValue = item.params[1]
-                setName2RegNum(gpr, assignmentDict)
-                if gpr.regType in gprAssignValue:
-                    if gpr.regIdx in gprAssignValue[gpr.regType]:
-                        if gprValue == gprAssignValue[gpr.regType][gpr.regIdx]:
-                            if item.comment:
-                                item.inst = ""
-                                item.params = []
-                                item.comment += " (dup assign opt.)"
-                            else:
-                                module.removeItemByIndex(index)
-                                index -= 1
-                else:
-                    gprAssignValue[gpr.regType] = dict()
-                gprAssignValue[gpr.regType][gpr.regIdx] = gprValue
-            # These macros does not follow the pattern :(
-            elif re.match(r'GLOBAL_OFFSET_', item.inst) or \
-                 item.inst == "V_MAGIC_DIV" or \
-                 item.inst == "DYNAMIC_VECTOR_DIVIDE": # Remove if global read use the register
-                m = re.findall(r'^(.+?)\+(\d+)', item.params[0])[0]
-                num = assignmentDict[m[0]] + int(m[1])
-                if ("v" in gprAssignValue) and \
-                    (num in gprAssignValue["v"]):
-                    del gprAssignValue["v"][num]
-            elif len(item.params) > 1:
-                gpr = item.params[0]
-                if isinstance(gpr, Code.RegisterContainer):
-                    gprList = setName2RegNum(gpr, assignmentDict)
-                    if gpr.regType in gprAssignValue:
-                        for gprIdx in gprList:
-                            if gprIdx in gprAssignValue[gpr.regType]: # Remove if anyone use the register
-                                del gprAssignValue[gpr.regType][gprIdx]
-        elif isinstance(item, Code.CompoundInst):
-            if not isinstance(item, Code.WaitCnt):
+            RecordGraph(item, graph, assignmentDict)
+        elif isinstance(item, Code.BranchInst) or \
+             isinstance(item, Code.Label) or \
+             isinstance(item, Code.CompoundInst):
+            if isinstance(item, Code.CompoundInst) and (not isinstance(item, Code.WaitCnt)):
                 printExit("Currently does not support any Item that is a Code.CompoundInst but \
                            not a Code.WaitCnt.")
-        elif isinstance(item, Code.Label):  # Reset dict
-            gprAssignValue.clear()
-        index += 1
+            for i in range(len(graph["v"])):
+               graph["v"][i].append(item)
+            for i in range(len(graph["s"])):
+               graph["s"][i].append(item)
+        elif isinstance(item, Code.Inst):
+            branchInstList = ["s_setpc_b64", "s_branch", "s_cbranch_scc0", "s_cbranch_scc1", "s_cbranch_vccz"]
+            if item.inst in branchInstList:
+                assert("Should not add branch inst without Code.BranchInst.")
+            for p in item.params:
+                if isinstance(p, Code.RegisterContainer):
+                    setName2RegNum(p, assignmentDict)
+                    if p.regType == "acc":
+                        continue
+                    for i in range(p.regIdx, p.regIdx + p.regNum):
+                        if graph[p.regType][i] and graph[p.regType][i][-1] == item:
+                            continue
+                        # print("[%s] Index %d %d" %(p.regType, i, len(graph[p.regType])))
+                        graph[p.regType][i].append(item)
+        elif isinstance(item, Code.Macro):
+            # Only push when registers are used in the macro
+            for p in item.macro.params:
+                if isinstance(p, Code.RegisterContainer):
+                    setName2RegNum(p, assignmentDict)
+                    for i in range(p.regIdx, p.regIdx + p.regNum + 1):
+                        if graph[p.regType][i] and graph[p.regType][i][-1] == item:
+                            continue
+                        graph[p.regType][i].append(item)
+
+# Currently only removes s_mov_b32, does not support 2 sgpr at lvalue
+def RemoveDuplicateAssignmentGPR(graph, regType):
+    for idx, sList in enumerate(graph[regType]):
+        assignValue = None
+        newList = []
+        for item in sList:
+            isRemoved = False
+            if isinstance(item, Code.BranchInst) or \
+               isinstance(item, Code.Label) or \
+               isinstance(item, Code.CompoundInst):
+               assignValue = None
+            elif isinstance(item, Code.Inst):
+                if item.inst == "s_mov_b32":
+                    gpr      = item.params[0]
+                    gprValue = item.params[1]
+                    if gpr.regIdx == idx and gprValue == assignValue:
+                        if item.comment:
+                            item.inst = ""
+                            item.params = []
+                            item.comment += " (dup assign opt.)"
+                        else:
+                            module = item.parent
+                            module.removeItem(item)
+                        isRemoved = True
+                    assignValue = gprValue
+                # These macros does not follow the pattern :(
+                elif re.match(r'GLOBAL_OFFSET_', item.inst) or \
+                     item.inst == "V_MAGIC_DIV" or \
+                     item.inst == "DYNAMIC_VECTOR_DIVIDE": # Remove if global read use the register
+                    assignValue = None
+                elif len(item.params) > 1:
+                    gpr = item.params[0]
+                    if isinstance(gpr, Code.RegisterContainer) and (gpr.regType == regType):
+                        for i in range(gpr.regIdx, gpr.regIdx + gpr.regNum):
+                            if i == idx:
+                                assignValue = None
+                                break
+            if not isRemoved:
+                newList.append(item)
+
+        if len(newList) != len(sList):
+            graph["s"][idx] = newList
 
 ################################################################################
 ################################################################################
@@ -137,3 +175,25 @@ def setName2RegNum(gpr, assignmentDict):
     for i in range(0, gpr.regNum):
         RegNumList.append(i + gpr.regIdx)
     return RegNumList
+
+def graphDebugSaveToTxt(graph, kernelName):
+    f = open('%s.txt' % kernelName, 'w')
+    f.write("VGPR\n")
+    i = 0
+    for d in graph["v"]:
+        f.write("[%d]\n" % i)
+        for dd in d:
+            ss = str(dd)
+            f.write(ss)
+        f.write("\n")
+        i += 1
+    i = 0
+    f.write("SGPR\n")
+    for d in graph["s"]:
+        f.write("[%d]\n" % i)
+        for dd in d:
+            ss = str(dd)
+            f.write(ss)
+        f.write("\n")
+        i += 1
+    f.close()

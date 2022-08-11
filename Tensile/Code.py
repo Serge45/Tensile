@@ -570,6 +570,9 @@ class Module(Item):
       index = -1
     del self.itemList[index]
 
+  def removeItem(self, item):
+    self.itemList = [ x for x in self.itemList if x is not item ]
+
   def removeItemsByName(self, name):
     """
     Remove items from itemList

@@ -2124,7 +2124,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
     # function signature last since it needs to know how many gprs were actually used
     fs = self.functionSignature(kernel)
     assignDict = CodePass.GetAssignmentDict(fs)
-    CodePass.RemoveDuplicateAssignment(module, assignDict)
+    graph = CodePass.BuildGraph(module, self.vgprPool.size(), self.sgprPool.size(), assignDict)
+    CodePass.RemoveDuplicateAssignment(graph)
     moduleKernelBody.addCode(fs)
     moduleKernelBody.addCode(module)
     return (error, str(moduleKernelBody))
