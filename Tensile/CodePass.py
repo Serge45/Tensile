@@ -53,18 +53,13 @@ def GetAssignmentDictIter(module, assignmentDict):
     for item in module.items():
         if isinstance(item, Code.Module):
             GetAssignmentDictIter(item, assignmentDict)
-        elif isinstance(item, Code.Inst):
-            if item.inst == ".set":
-                if re.match(r'^[sv]gpr', item.params[0]):
-                    if isinstance(item.params[1], int):
-                        assignmentDict[item.params[0]] = item.params[1]
-                    else:
-                        # Format must be .set AAAAA, BBBBB+0
-                        m = re.findall(r'^([a-zA-Z]+)\+([0-9])*', item.params[1])
-                        assert(m)
-                        m = m[0]
-                        num = assignmentDict[m[0]] + int(m[1])
-                        assignmentDict[item.params[0]] = num
+        elif isinstance(item, Code.RegSet):
+            num = 0
+            if item.ref:
+                num = assignmentDict[item.ref] + item.offset
+            else:
+                num = item.value
+            assignmentDict[item.name] = num
 
 class graphProp(NamedTuple):
     lrv: int = 0

@@ -29,7 +29,7 @@ from .AsmMemoryInstruction import MemoryInstruction
 from .AsmRegisterPool import RegisterPool, SmartPoolContainer
 from .AsmStoreState import StoreState
 from .AsmAssert import Assert, bomb
-from .AsmMacros import InstMacros, macroRegister
+from .AsmMacros import InstMacros
 from .AsmUtils import vgpr, sgpr, accvgpr, mgpr, log2, s_mul_int_64_32, \
                       vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
                       scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, sBranchIfZero, \
@@ -1591,7 +1591,7 @@ class KernelWriterAssembly(KernelWriter):
     module.addComment2("VGPR Assignments")
     module.addComment0("ValuC range: [%u-%u), %s"%(self.startVgprValuC, self.startVgprValuC+self.numVgprValuC, \
                            "serializedStore enabled" if self.serializedStore else ""))
-    module.addCode(macroRegister("vgprValuC", self.startVgprValuC))
+    module.addCode(Code.RegSet("v", "vgprValuC", self.startVgprValuC))
 
     module.addComment0("ValuA/B   Xn=PLR buffer idx,  In=InnerUnroll idx")
     # PLR index: from X0 to X<LoopIters-1> (at most) -> VGPRs will be duplicated LoopIters times (at most)
@@ -1606,82 +1606,82 @@ class KernelWriterAssembly(KernelWriter):
     if self.numVgprValuA > 0: # Do not generate vgprValuA if numVgprValuA is 0
       for bi in range(0,numBi): # buffer indices
         for iui in range(0, kernel["InnerUnroll"]):
-          module.addCode(macroRegister("vgprValuA_X%u_I%u"%(bi,iui), self.startVgprValuA+ri))
+          module.addCode(Code.RegSet("v", "vgprValuA_X%u_I%u"%(bi,iui), self.startVgprValuA+ri))
           ri += self.numVgprValuAPerBlock
     if not kernel["DirectToLdsA"] or self.do["KeepDirectToLdsAlloc"]:
-        module.addCode(macroRegister("vgprG2LA", self.startVgprG2LA))
+        module.addCode(Code.RegSet("v", "vgprG2LA", self.startVgprG2LA))
         if kernel["DirectToVgprA"]:
           # additional definition G2LA0, G2LA1 for swapping register sets
-          module.addCode(macroRegister("vgprG2LA0", self.startVgprG2LA))
-          module.addCode(macroRegister("vgprG2LA1", self.startVgprG2LA + self.numVgprG2LA//2))
+          module.addCode(Code.RegSet("v", "vgprG2LA0", self.startVgprG2LA))
+          module.addCode(Code.RegSet("v", "vgprG2LA1", self.startVgprG2LA + self.numVgprG2LA//2))
 
     ri = 0
     if self.numVgprValuB > 0: # Do not generate vgprValuB if numVgprValuB is 0
       for bi in range(0,numBi): # buffer indices
         for iui in range(0, kernel["InnerUnroll"]):
-          module.addCode(macroRegister("vgprValuB_X%u_I%u"%(bi,iui), self.startVgprValuB+ri))
+          module.addCode(Code.RegSet("v", "vgprValuB_X%u_I%u"%(bi,iui), self.startVgprValuB+ri))
           ri += self.numVgprValuBPerBlock
     if not kernel["DirectToLdsB"] or self.do["KeepDirectToLdsAlloc"]:
-        module.addCode(macroRegister("vgprG2LB", self.startVgprG2LB))
+        module.addCode(Code.RegSet("v", "vgprG2LB", self.startVgprG2LB))
         if kernel["DirectToVgprB"]:
           # additional definition G2LB0, G2LB1 for swapping register sets
-          module.addCode(macroRegister("vgprG2LB0", self.startVgprG2LB))
-          module.addCode(macroRegister("vgprG2LB1", self.startVgprG2LB + self.numVgprG2LB//2))
+          module.addCode(Code.RegSet("v", "vgprG2LB0", self.startVgprG2LB))
+          module.addCode(Code.RegSet("v", "vgprG2LB1", self.startVgprG2LB + self.numVgprG2LB//2))
     if not kernel["LocalWriteUseSgprA"] and self.numVgprLocalWriteAddressesA > 0:
-      module.addCode(macroRegister("vgprLocalWriteAddrA", \
+      module.addCode(Code.RegSet("v", "vgprLocalWriteAddrA", \
           self.startVgprLocalWriteAddressesA))
       if self.numVgprLocalWriteAddressesA > 1:
-        module.addCode(macroRegister("vgprLocalWriteAddrOverhangA", \
+        module.addCode(Code.RegSet("v", "vgprLocalWriteAddrOverhangA", \
             self.startVgprLocalWriteAddressesA+1))
     if not kernel["LocalWriteUseSgprB"] and self.numVgprLocalWriteAddressesB > 0:
-      module.addCode(macroRegister("vgprLocalWriteAddrB", \
+      module.addCode(Code.RegSet("v", "vgprLocalWriteAddrB", \
           self.startVgprLocalWriteAddressesB))
       if self.numVgprLocalWriteAddressesB > 1:
-        module.addCode(macroRegister("vgprLocalWriteAddrOverhangB", \
+        module.addCode(Code.RegSet("v", "vgprLocalWriteAddrOverhangB", \
             self.startVgprLocalWriteAddressesB+1))
     if kernel["BufferLoad"]:
-      module.addCode(macroRegister("vgprGlobalReadOffsetA", \
+      module.addCode(Code.RegSet("v", "vgprGlobalReadOffsetA", \
           self.startVgprGlobalReadOffsetA))
-      module.addCode(macroRegister("vgprGlobalReadOffsetB", \
+      module.addCode(Code.RegSet("v", "vgprGlobalReadOffsetB", \
           self.startVgprGlobalReadOffsetB))
       if self.useGlobalReadTileVgpr:
-        module.addCode(macroRegister("vgprGlobalReadTileOffsetA", \
+        module.addCode(Code.RegSet("v", "vgprGlobalReadTileOffsetA", \
             self.startVgprGlobalReadTileOffsetA))
-        module.addCode(macroRegister("vgprGlobalReadUnrollOffsetA", \
+        module.addCode(Code.RegSet("v", "vgprGlobalReadUnrollOffsetA", \
             self.startVgprGlobalReadUnrollOffsetA))
-        module.addCode(macroRegister("vgprGlobalReadTileOffsetB", \
+        module.addCode(Code.RegSet("v", "vgprGlobalReadTileOffsetB", \
             self.startVgprGlobalReadTileOffsetB))
-        module.addCode(macroRegister("vgprGlobalReadUnrollOffsetB", \
+        module.addCode(Code.RegSet("v", "vgprGlobalReadUnrollOffsetB", \
             self.startVgprGlobalReadUnrollOffsetB))
     else:
-      module.addCode(macroRegister("vgprGlobalReadAddrA", \
+      module.addCode(Code.RegSet("v", "vgprGlobalReadAddrA", \
           self.startVgprGlobalReadAddressesA))
-      module.addCode(macroRegister("vgprGlobalReadAddrB", \
+      module.addCode(Code.RegSet("v", "vgprGlobalReadAddrB", \
           self.startVgprGlobalReadAddressesB))
 
     if self.globalReadIncsUseVgpr:
-      module.addCode(macroRegister("vgprGlobalReadIncsA", \
+      module.addCode(Code.RegSet("v", "vgprGlobalReadIncsA", \
           self.startVgprGlobalReadIncsA))
-      module.addCode(macroRegister("vgprGlobalReadIncsB", \
+      module.addCode(Code.RegSet("vgprGlobalReadIncsB", "v", \
           self.startVgprGlobalReadIncsB))
     if self.numVgprLocalReadAddressesA > 0:
-      module.addCode(macroRegister("vgprLocalReadAddrA", \
+      module.addCode(Code.RegSet("v", "vgprLocalReadAddrA", \
           self.startVgprLocalReadAddressesA))
     if self.numVgprLocalReadAddressesB > 0:
-      module.addCode(macroRegister("vgprLocalReadAddrB", \
+      module.addCode(Code.RegSet("v", "vgprLocalReadAddrB", \
           self.startVgprLocalReadAddressesB))
 
     if kernel["ProblemType"]["DataType"].isDoubleComplex() and kernel["MIArchVgpr"]:
-      module.addCode(macroRegister("vgprAlphaTmp", \
+      module.addCode(Code.RegSet("v", "vgprAlphaTmp", \
           self.startVgprAlphaTmp))
 
     # Serial is always the last register in the pool so the store
     # code doesn't have to deal with fragmentation
     self.vgprstartSerial = self.vgprPool.size()-1
-    module.addCode(macroRegister("vgprSerial", self.startVgprSerial))
+    module.addCode(Code.RegSet("v", "vgprSerial", self.startVgprSerial))
 
     if globalParameters["DebugKernel"]:
-      module.addCode(macroRegister("vgprAddressDbg", \
+      module.addCode(Code.RegSet("v", "vgprAddressDbg", \
           self.startVgprAddressDbg))
     #module.addComment0("Occu: %u waves/simd" % self.numWavesPerSimd )
     module.addComment0("Num VGPR=%u"%self.vgprPool.size())
@@ -1695,7 +1695,7 @@ class KernelWriterAssembly(KernelWriter):
     # Emit declarations for all sgprs allocated with defineSgpr
     # in the order they were declared
     for skey in self.sgprs:
-      module.addCode(macroRegister("sgpr"+skey, self.sgprs[skey]))
+      module.addCode(Code.RegSet("s", "sgpr"+skey, self.sgprs[skey]))
     module.addComment0("max SGPR=%u"%self.sgprPool.size())
 
     module.addSpaceLine()
@@ -1711,8 +1711,8 @@ class KernelWriterAssembly(KernelWriter):
       else:
         raise ValueError("unexpected index type in size assignments")
 
-      module.addCode(macroRegister("sgprSize%s"%(idxChar), \
-                  "sgprSizes%s+%u"%(idxType, idx)))
+      module.addCode(Code.RegSet("s", "sgprSize%s"%(idxChar), \
+                  "sgprSizes%s"%idxType, idx))
 
     module.addSpaceLine()
     module.addComment0("Stride Assignments")
@@ -1721,48 +1721,48 @@ class KernelWriterAssembly(KernelWriter):
         i = idx
         idxChar= self.indexChars[idx]
         if i == 0 and not kernel["ProblemType"]["UseInitialStridesCD"]:
-          module.addCode(macroRegister("constStride%s%s"%(tc,idxChar), 1))
+          module.addCode(Code.ValueSet("constStride%s%s"%(tc,idxChar), 1))
         else:
           if not kernel["ProblemType"]["UseInitialStridesCD"]:
             i = i-1
-          module.addCode(macroRegister("sgprStride%s%s"%(tc,idxChar), \
-                    "sgprStrides%s+%u"%(tc, i)))
+          module.addCode(Code.RegSet("s", "sgprStride%s%s"%(tc,idxChar), \
+                    "sgprStrides%s"%tc, i))
 
     for tc in ('A','B'):
       for i, idx in enumerate(problemType["IndexAssignments%s"%tc]):
         idxChar= self.indexChars[idx]
         if i == 0 and not kernel["ProblemType"]["UseInitialStridesAB"]:
-          module.addCode(macroRegister("constStride%s%s"%(tc,idxChar), 1))
+          module.addCode(Code.ValueSet("constStride%s%s"%(tc,idxChar), 1))
         else:
           if not kernel["ProblemType"]["UseInitialStridesAB"]:
             i = i-1
-          module.addCode(macroRegister("sgprStride%s%s"%(tc,idxChar), \
-                    "sgprStrides%s+%u"%(tc, i)))
+          module.addCode(Code.RegSet("s", "sgprStride%s%s"%(tc,idxChar), \
+                    "sgprStrides%s"%tc, i))
 
     module.addSpaceLine()
-    module.addCode(macroRegister("MT0", kernel["MacroTile0"]))
-    module.addCode(macroRegister("MT1", kernel["MacroTile1"]))
-    module.addCode(macroRegister("DepthU", kernel["DepthU"]))
-    module.addCode(macroRegister("GSU", kernel["GlobalSplitU"]))
-    module.addCode(macroRegister("BpeA", self.tPA["bpe"]))
-    module.addCode(macroRegister("BpeALog2", log2(self.tPA["bpe"])))
-    module.addCode(macroRegister("BpeB", self.tPB["bpe"]))
-    module.addCode(macroRegister("BpeBLog2", log2(self.tPB["bpe"])))
+    module.addCode(Code.ValueSet("MT0", kernel["MacroTile0"]))
+    module.addCode(Code.ValueSet("MT1", kernel["MacroTile1"]))
+    module.addCode(Code.ValueSet("DepthU", kernel["DepthU"]))
+    module.addCode(Code.ValueSet("GSU", kernel["GlobalSplitU"]))
+    module.addCode(Code.ValueSet("BpeA", self.tPA["bpe"]))
+    module.addCode(Code.ValueSet("BpeALog2", log2(self.tPA["bpe"])))
+    module.addCode(Code.ValueSet("BpeB", self.tPB["bpe"]))
+    module.addCode(Code.ValueSet("BpeBLog2", log2(self.tPB["bpe"])))
     module.addComment0("Number of elements to shift-left SRD")
-    module.addCode(macroRegister("SrdShiftLeftA", self.srdShiftLeft['A']))
-    module.addCode(macroRegister("SrdShiftLeftB", self.srdShiftLeft['B']))
+    module.addCode(Code.ValueSet("SrdShiftLeftA", self.srdShiftLeft['A']))
+    module.addCode(Code.ValueSet("SrdShiftLeftB", self.srdShiftLeft['B']))
 
     if kernel["BufferLoad"] or kernel["BufferStore"]:
       module.addComment0("2GB limit - set offsets to -1 to exceed this and clamp")
-      module.addCode(macroRegister("BufferLimit", "0xffffffff"))
+      module.addCode(Code.ValueSet("BufferLimit", 0xffffffff, format=1))
       #TODO-64 : This is max 32-bit negative value, the tail loop
       # does incrementally step through the GRO and increment GRO
       # which are initialized with this value
-      module.addCode(macroRegister("BufferOOB", "0x80000000"))
+      module.addCode(Code.ValueSet("BufferOOB", 0x80000000, format=1))
 
       srdUpperValue = Code.SrdUpperValue(self.version)
       module.addComment2("Bits 127:96 of SRD.\n" + srdUpperValue.desc())
-      module.addCode(macroRegister("Srd127_96", str(srdUpperValue)))
+      module.addCode(Code.ValueSet("Srd127_96", srdUpperValue.getValue(), format=1))
 
     ########################################
     # Global Offsets

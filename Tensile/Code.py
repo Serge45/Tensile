@@ -744,6 +744,37 @@ class TextBlock(Item):
     ostream += "\n"
     return ostream
 
+class ValueSet(Item):
+  def __init__(self, name, value, offset = 0, format = 0):
+    super().__init__(name)
+    if isinstance(value, int):
+      self.ref   = None
+      self.value = value
+    elif isinstance(value, str):
+      self.ref   = value
+      self.value = None
+    self.offset = offset
+    # 0 for dec, 1 for hex
+    self.format = format
+
+  def __str__(self):
+    t = ".set " + self.name + ", "
+    if self.ref:
+      t += "%s+%u" % (self.ref, self.offset)
+    else:
+      if self.format == 0:
+        t += str(self.value + self.offset)
+      elif self.format == 1:
+        t += "0x{0:08x}".format(self.value + self.offset)
+    t += "\n"
+    return t
+
+class RegSet(ValueSet):
+  def __init__(self, regType, name, value, offset = 0):
+    super().__init__(name, value, offset)
+    # v or s
+    self.regType = regType
+
 class Inst(Item):
   """
   Inst is a single instruction and is base class for other instructions.
@@ -906,6 +937,9 @@ class BitfieldStructure(ctypes.Structure):
 class BitfieldUnion(ctypes.Union):
   def __str__(self):
     return "0x{0:08x}".format(self.value)
+
+  def getValue(self):
+    return self.value
 
   def desc(self):
     return "hex: {}\n".format(self) + self.fields.desc()

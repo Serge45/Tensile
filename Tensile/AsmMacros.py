@@ -23,10 +23,6 @@ from posixpath import isabs
 from . import Code
 from .Common import globalParameters, printWarning
 
-# format macro
-def macroRegister(name, value):
-    return Code.Inst(".set", name, value, "")
-
 class InstMacros():
     def __init__(self, version, isa, asmCaps, archCaps, asmBugs, wavefrontSize, vcc):
         self.version       = version
