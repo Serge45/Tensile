@@ -40,9 +40,18 @@ class RegisterContainer:
   def setInlineAsm(self, setting):
     self.isInlineAsm = setting
 
-  def replaceRegName(self, srcName, dstName):
+  def replaceRegName(self, srcName, dst):
     if self.regName:
-      self.regName = self.regName.replace(srcName, dstName)
+      if isinstance(dst, int):
+        if self.regName == srcName: # Exact match
+          self.regName = ""
+          self.regIdx = dst
+        else:
+          self.regName = self.regName.replace(srcName, str(dst))
+      elif isinstance(dst, str):
+        self.regName = self.regName.replace(srcName, dst)
+      else:
+        assert("Dst type unknown %s" % str(type(dst)) and 0)
 
   def getRegNameWithType(self):
     assert(self.regName)
@@ -479,6 +488,12 @@ class Module(Item):
     """
     self.addCode(Inst(*args))
 
+  def addWaitCnt(self, *args, **kwargs):
+    """
+    Convenience function to construct a single WaitCnt and add to items
+    """
+    self.addCode(WaitCnt(*args, **kwargs))
+
   def prettyPrint(self,indent=""):
     ostream = ""
     ostream += '%s%s "%s"\n'%(indent, type(self).__name__, self.name)
@@ -866,31 +881,40 @@ class WaitCnt(CompoundInst):
   If lgkmcnt=vmcnt= -1 then the waitcnt is a nop and
   an instruction with a comment is returned.
   """
-  def __init__(self, version,lgkmcnt=-1,vmcnt=-1,comment=""):
+  def __init__(self, lgkmcnt=-1, vmcnt=-1, vscnt=-1, comment="", waitAll=False):
     super().__init__("wait")
 
-    self.version = version
     self.lgkmcnt = lgkmcnt
     self.vmcnt   = vmcnt
-    self.comment = "lgkmcnt={} vmcnt={}".format(lgkmcnt, vmcnt) + comment
+    self.vscnt   = vscnt
+    self.comment = comment
+    self.waitAll = waitAll
 
   def instructions(self):
+    currentIsa = globalParameters["CurrentISA"]
     self.instList = []
+
+    if self.waitAll:
+      self.addInst("s_waitcnt", 0, "Wait all")
+      separateVscnt = globalParameters["ArchCaps"][currentIsa]["SeparateVscnt"]
+      if separateVscnt:
+        self.addInst("s_waitcnt_vscnt", "null", 0, "writes")
+      return
+
     main_args = []
-    wait_store = False
+
     if self.lgkmcnt != -1:
-      currentIsa = globalParameters["CurrentISA"]
       maxLgkmcnt = globalParameters["AsmCaps"][currentIsa]["MaxLgkmcnt"]
       main_args += ["lgkmcnt(%u)" % (min(self.lgkmcnt,maxLgkmcnt))]
-      wait_store = True
 
     if self.vmcnt != -1:
       main_args += ["vmcnt(%u)" % self.vmcnt]
 
     if len(main_args) > 0:
       self.addInst("s_waitcnt", *main_args, self.comment)
-      if wait_store and self.version[0] == 10 and self.vmcnt != -1:
-        self.addInst("s_waitcnt_vscnt", "null", self.vmcnt, "writes")
+      separateVscnt = globalParameters["ArchCaps"][currentIsa]["SeparateVscnt"]
+      if separateVscnt and self.vscnt != -1:
+        self.addInst("s_waitcnt_vscnt", "null", self.vscnt, "writes")
     else:
       self.addComment0(self.comment)
 

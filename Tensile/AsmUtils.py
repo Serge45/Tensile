@@ -21,7 +21,7 @@
 
 from math import log
 from enum import Enum
-from .Code import HolderContainer, RegisterContainer, Module, Inst, Item, BranchInst
+from .Code import HolderContainer, RegisterContainer, Module, Inst, Item, BranchInst, WaitCnt
 from .Common import printExit
 import random
 import string
@@ -386,14 +386,23 @@ def saturateCastInt(sumIdxV, tmpVgpr, tmpSgpr, lowerBound, upperBound, type=Satu
         module.addInst("v_max_i32", vgpr("ValuC+%u"%(sumIdxV)), lowerBound, vgpr("ValuC+%u"%(sumIdxV)), "x = max(%d, x)"%lowerBound )
     return module
 
-def replacePlaceHolder(module, srcStr, dstStr):
+def replacePlaceHolder(module, srcStr, dst):
     assert(isinstance(module, Item))
     if isinstance(module, Module):
         for item in module.items():
-            replacePlaceHolder(item, srcStr, dstStr)
+            replacePlaceHolder(item, srcStr, dst)
     elif isinstance(module, Inst):
         for param in module.params:
-            param.replaceRegName(srcStr, dstStr)
+            param.replaceRegName(srcStr, dst)
+    elif isinstance(module, WaitCnt):
+        assert(isinstance(dst, int))
+        if module.vmcnt == srcStr:
+            module.vmcnt = dst
+        if module.lgkmcnt == srcStr:
+            module.lgkmcnt = dst
+        if module.vscnt == srcStr:
+            module.vscnt = dst
+
     return module
 
 ########################################

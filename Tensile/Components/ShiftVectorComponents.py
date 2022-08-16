@@ -265,7 +265,7 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
                                                 needWait = True
 
                                         if needWait:
-                                            module.addInst("s_waitcnt", "0", "wait for swizzle operation")
+                                            module.addWaitCnt(waitAll=True, comment="wait for swizzle operation")
 
                                         copyInstStr = "v_accvgpr_write_b32" if not kernel["MIArchVgpr"] else "v_mov_b32"
                                         for e in range(min(r, allContOutCoal)):

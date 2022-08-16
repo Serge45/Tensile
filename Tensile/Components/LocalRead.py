@@ -193,9 +193,7 @@ class LocalReadMFMA(LocalRead):
                             dbgVgprList = (dbgVgprList[1].split("]")[0]).split(':')
                             dbgVgpr = "v[%s]"%dbgVgprList[0]
 
-                        localReadCode.addInst("s_waitcnt lgkmcnt(0)", "CheckValue1 wait for LDS read")
-                        if writer.archCaps["SeparateVscnt"]:
-                            localReadCode.addInst( "s_waitcnt_vscnt", "null", "0", "")
+                        localReadCode.addWaitCnt(lgkmcnt=0, vscnt=0, comment="CheckValue1 wait for LDS read")
 
                         if kernel["ProblemType"]["DataType"].isHalf():
                             hexValue = hex(0x3c003c00)     # packed 1s

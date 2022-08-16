@@ -756,10 +756,13 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
                 if uDu < kernel["DepthULdsDivisor"]-1:
                     imod.addComment0("no wait vmcnt except for in the last subLdsLoop")
                 else:
-                    imod.addCode(Code.WaitCnt(writer.version, -1, min(maxVmcnt, readsToWait + readsToWaitDTV + readsToWaitAdjustForStoreC), \
-                      "wait for global read before writing to local"))
-                    imodNGLL.addCode(Code.WaitCnt(writer.version, -1, min(maxVmcnt, readsToWaitNGLL  + readsToWaitDTV + readsToWaitAdjustForStoreC), \
-                      "wait for global read before writing to local"))
+                    imod.addWaitCnt(lgkmcnt=-1, \
+                        vmcnt=min(maxVmcnt, readsToWait + readsToWaitDTV + readsToWaitAdjustForStoreC), vscnt=-1, \
+                        comment="wait for global read before writing to local")
+                    imodNGLL.addWaitCnt(lgkmcnt=-1, \
+                        vmcnt=min(maxVmcnt, readsToWaitNGLL  + readsToWaitDTV + readsToWaitAdjustForStoreC), vscnt=-1, \
+                        comment="wait for global read before writing to local")
+            # PK and StoreCUnroll is removed so you cannot find any __placeholder__ in s_waitcnt
             if kernel["PrefetchGlobalRead"]==2:
                 if "s_waitcnt" in str(item) and "__placeholder__" in str(item):
                     readsToWaitAdjust = readsToWait + readsToWaitDTV
@@ -773,7 +776,7 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
                     if kernel["NoLdsWriteCode"] and kernel["PrefetchGlobalRead"]!=2:
                         # DirectToLds or DirectToVgpr for both A and B case, use  the number of global read for both A and B as vmcnt (only for PGR=1)
                         readsToWaitAdjust = len(list(writer.globalReadACode.middle.items())) + len(list(writer.globalReadBCode.middle.items()))
-                    item = replacePlaceHolder(item, "__placeholder__", str(readsToWaitAdjust))
+                    item = replacePlaceHolder(item, "__placeholder__", (readsToWaitAdjust))
 
             imod.addCode(item)
             # schedule global instruction that need to be scheduled later
@@ -785,8 +788,9 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
                     reads = reads + readsInc
                     if reads > 1:
                         break
+                    # PK and StoreCUnroll is removed so you cannot find any __placeholder__ in s_waitcnt
                     if "s_waitcnt" in str(itemGR) and "__placeholder__" in str(itemGR):
-                        replacePlaceHolder(itemGR, "__placeholder__", str(readsToWait))
+                        replacePlaceHolder(itemGR, "__placeholder__", (readsToWait))
                         imod.addCode(itemGR)
                     else:
                         imod.addCode(itemGR)

@@ -324,7 +324,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if kernel["1LDSBuffer"]:
         barrier = Code.Module()
         barrier.addComment0("1 LDS buffer: read-sync-write")
-        barrier.addInst("s_waitcnt lgkmcnt(0)","")
+        barrier.addWaitCnt(lgkmcnt=0, comment="")
         barrier.addInst("s_barrier","")
         iterCode.addCode(barrier)
       iterCode.addCode(localWriteCode)
@@ -447,6 +447,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
                         (vacancy["noReadsAtThisIter"] or readsIter <= vacancy["atIter"] + self.numItersPLR):
                       if isinstance(self.localReadsWait[readsIter], Code.WaitCnt):
                         self.localReadsWait[readsIter].lgkmcnt += 1
+                        # This line is added for backward compatibility
+                        self.localReadsWait[readsIter].vscnt = self.localReadsWait[readsIter].vmcnt \
+                          if self.localReadsWait[readsIter].lgkmcnt != -1 and \
+                             self.localReadsWait[readsIter].vmcnt != -1 else -1
             else:
               # make sure the localread sequence remain the same
               vacancy["latencyLeft"] = 0
@@ -558,7 +562,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
         if kernel["1LDSBuffer"] and mfmaIndex == self.lwStartMfmaIndex - 1:
           barrier = Code.Module()
           barrier.addComment0("1 LDS buffer: read-sync-write")
-          barrier.addInst("s_waitcnt lgkmcnt(0)","")
+          barrier.addWaitCnt(lgkmcnt=0, comment="")
           barrier.addInst("s_barrier","")
           iterCode.addCode(barrier)
 
@@ -850,6 +854,8 @@ class KernelWriter(metaclass=abc.ABCMeta):
 
       waitCode.comment += " old=%u, new=%u newLW=%u newLR=%u" % (waitCode.lgkmcnt, lgkmcnt,localWrites,localReads)
       waitCode.lgkmcnt = lgkmcnt
+      # This line is added for backward compatibility
+      waitCode.vscnt = waitCode.vmcnt if waitCode.lgkmcnt != -1 and waitCode.vmcnt != -1 else -1
 
     return iterCode
 
@@ -1016,10 +1022,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if kernel["DirectToVgprA"]:
         tensorParameters1st, tensorParameters2nd = tensorParameters2nd, tensorParameters1st
       moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParameters1st, usePlaceHolder=False)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", str(0)))
+      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
       module.addCode(self.globalReadDo(kernel, 0, tensorParameters1st, 0))
       moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParameters2nd, usePlaceHolder=False)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", str(0)))
+      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
       module.addCode(self.globalReadDo(kernel, 0, tensorParameters2nd, 0))
       module.addCode(self.globalReadIncrementAB(kernel, self.unrollIdx, pfi))
 
@@ -1920,13 +1926,13 @@ class KernelWriter(metaclass=abc.ABCMeta):
         tc1, tc2 = tc2, tc1
       module.addComment1("Update M0 for DTLDS")
       moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParameters1st)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", str(0)))
+      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
       module.addComment1("global read %s"%tc1)
       vregSetIdx = 0
       module.addCode(self.globalReadDo(kernel, 2, tensorParameters1st, vregSetIdx))
       module.addComment1("Update M0 for DTLDS")
       moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParameters2nd)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", str(0)))
+      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
       module.addComment1("global read %s"%tc2)
       vregSetIdx = 0
       module.addCode(self.globalReadDo(kernel, 2, tensorParameters2nd, vregSetIdx))
@@ -3413,5 +3419,5 @@ for codeObjectFileName in codeObjectFileNames:
       # oddLast case, ignore all of above and set 0
       if oddLast:
         needToWait = 0
-      inst = Code.Inst("s_waitcnt", "vmcnt(%u)" % needToWait, waitComment)
+      inst = Code.WaitCnt(vmcnt=needToWait, comment=waitComment)
     return inst
