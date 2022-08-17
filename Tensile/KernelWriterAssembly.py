@@ -4737,7 +4737,7 @@ class KernelWriterAssembly(KernelWriter):
     numRegistersOut  = kernel["MIRegPerOut"]
     loopCounterName  = self.loopCounterName(kernel, self.unrollIdx)
     accs_per_wave    = kernel["MatrixInstM"] * kernel["MatrixInstN"] * kernel["MatrixInstB"] \
-                       / self.kernel["WavefrontSize"] * numRegistersOut
+                       // self.kernel["WavefrontSize"] * numRegistersOut
     dividerFortidInK = kernel["MatrixInstN"] * kernel["MatrixInstB"]
     numMIInput       = kernel["MIInputPerThread"]
     miInTypeName     = kernel["ProblemType"]["DataType"].toNameAbbrev() # v_mfma_[...xK]<InType>
@@ -4745,7 +4745,8 @@ class KernelWriterAssembly(KernelWriter):
     vgprPerInput     = int(numMIInput * numRegistersIn)
     shiftPerElement  = int(numRegistersIn * 32)
     s_nop            = 0
-    accumRegType     = "a" if not kernel["MIArchVgpr"] else "v"
+    gprfunc          = accvgpr if not kernel["MIArchVgpr"] else vgpr
+    accumRegType     = "acc" if not kernel["MIArchVgpr"] else "v"
     mfma_1k          = "_1k" if kernel["MFMA_BF16_1K"] else ""
     accStoreCIdx     = 0
 
@@ -4963,13 +4964,13 @@ class KernelWriterAssembly(KernelWriter):
             for inst in ccInsts:
               if inst is not None:
                 imod.addCode(inst)
-            imod.addInst(v_mfma, "%s[%u:%u]" % (accumRegType, accStart, accEnd), src0, src1, "%s[%u:%u]"%(accumRegType, accStartSrc1, accEndSrc1), "Cr += Ar*Br")
+            imod.addInst(v_mfma, gprfunc(accStart, (accEnd-accStart+1)), src0, src1, gprfunc(accStartSrc1, (accEndSrc1-accStartSrc1+1)), "Cr += Ar*Br")
             (src0, src1) = (bi, (vgpr(ccVgprs[0] + offsetVgpr[0], numRegistersOut) if ccVgprs[0] else ai)) if kernel["SourceSwap"] else ((vgpr(ccVgprs[0] + offsetVgpr[0], numRegistersOut) if ccVgprs[0] else ai), bi)
-            imod.addInst(v_mfma + "%s[%u+%u:%u+%u]" % (accumRegType, accStart, accStoreCIdx, accEnd, accStoreCIdx), src0, src1, "%s[%u:%u]" %(accumRegType, accStartSrc2, accEndSrc2), "Cr += %sAi*Bi"%("-" if ccVgprs[0] else ""))
+            imod.addInst(v_mfma, gprfunc((accStart+accStoreCIdx), (accEnd-accStart+1)), src0, src1, gprfunc(accStartSrc2, (accEndSrc2-accStartSrc2+1)), "Cr += %sAi*Bi"%("-" if ccVgprs[0] else ""))
             (src0, src1) = (br, (vgpr(ccVgprs[1] + offsetVgpr[1], numRegistersOut) if ccVgprs[1] else ai)) if kernel["SourceSwap"] else ((vgpr(ccVgprs[1] + offsetVgpr[1], numRegistersOut) if ccVgprs[1] else ai), br)
-            imod.addInst(v_mfma + "%s[%u:%u]" % (accumRegType, accStart+accImOffset, accEnd+accImOffset), src0, src1, "%s[%u:%u]"%(accumRegType, accStartSrcImg1, accEndSrcImg1), "Ci += %sAi*Br"%("-" if ccVgprs[1] else ""))
+            imod.addInst(v_mfma, gprfunc((accStart+accImOffset), (accEnd-accStart+1)), src0, src1, gprfunc(accStartSrcImg1, (accEndSrcImg1-accStartSrcImg1+1)), "Ci += %sAi*Br"%("-" if ccVgprs[1] else ""))
             (src0, src1) = (bi, (vgpr(ccVgprs[2] + offsetVgpr[2], numRegistersOut) if ccVgprs[2] else ar)) if kernel["SourceSwap"] else ((vgpr(ccVgprs[2] + offsetVgpr[2], numRegistersOut) if ccVgprs[2] else ar), bi)
-            imod.addInst(v_mfma + "%s[%u+%u:%u+%u]" % (accumRegType, accStart+accImOffset, accStoreCIdx, accEnd+accImOffset, accStoreCIdx), src0, src1, "%s[%u:%u]"%(accumRegType, accStartSrcImg2, accEndSrcImg2), "Ci += %sAr*Bi"%("-" if ccVgprs[2] else ""))
+            imod.addInst(v_mfma, gprfunc((accStart+accImOffset+accStoreCIdx), (accEnd-accStart+1)), src0, src1, gprfunc(accStartSrcImg2, (accEndSrcImg2-accStartSrcImg2+1)), "Ci += %sAr*Bi"%("-" if ccVgprs[2] else ""))
 
             for v in ccVgprs:
               if v is not None: self.vgprPool.checkIn(v)
@@ -4981,8 +4982,9 @@ class KernelWriterAssembly(KernelWriter):
             else:
               src0 = Str0
               src1 = Str1
-            imod.addInst(v_mfma, "%s[%u+%u:%u+%u]" % (accumRegType, accStart, accStoreCIdx, accEnd, accStoreCIdx), \
-                         src0, src1, "%s[%u:%u]" % (accumRegType, accStartSrc1, accEndSrc1), "")
+            imod.addInst(v_mfma, gprfunc((accStart+accStoreCIdx), (accEnd-accStart+1)), \
+                         src0, src1, gprfunc(accStartSrc1, (accEndSrc1-accStartSrc1+1)), \
+                         "left value = %s[%u+%u:%u+%u]" % (accumRegType, accStart, accStoreCIdx, accEnd, accStoreCIdx))
 
     # release register
     if kReg is not None: self.vgprPool.checkIn(kReg)
