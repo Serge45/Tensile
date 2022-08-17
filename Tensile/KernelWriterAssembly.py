@@ -30,10 +30,10 @@ from .AsmRegisterPool import RegisterPool, SmartPoolContainer
 from .AsmStoreState import StoreState
 from .AsmAssert import Assert, bomb
 from .AsmMacros import InstMacros
-from .AsmUtils import vgpr, sgpr, accvgpr, mgpr, log2, s_mul_int_64_32, \
+from .AsmUtils import Holder, vgpr, sgpr, accvgpr, mgpr, log2, s_mul_int_64_32, \
                       vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
                       scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, sBranchIfZero, \
-                      replacePlaceHolder, \
+                      replaceHolder, \
                       SaturateCastType, LabelManager
 from .Activation import ActivationModule, ActivationType
 
@@ -5763,7 +5763,7 @@ class KernelWriterAssembly(KernelWriter):
         DtldsModule.addWaitCnt(lgkmcnt=0, comment="")
         if not kernel["NoLdsWriteCode"]:
           if usePlaceHolder:
-            waitStr = "__placeholder__"
+            waitStr = Holder(idx=0)
           else:
             waitStr = 0
           DtldsModule.addWaitCnt(vmcnt=waitStr, comment="")
@@ -8310,7 +8310,7 @@ class KernelWriterAssembly(KernelWriter):
           regsPerScalar = self.bpeCinternal//self.bpr # register per scalar
           for elementIdx in range(0, len(batchElements)):
             for vi in range(0, gwvw):
-              module.addCode(replacePlaceHolder(codeMulAlpha.items().pop(0), "__placeholder__", (ss.elementSumIdx[elementIdx]*regsPerScalar + regsPerScalar*vi)))
+              module.addCode(replaceHolder(codeMulAlpha.items().pop(0), (ss.elementSumIdx[elementIdx]*regsPerScalar + regsPerScalar*vi)))
 
     loadCInputCode = Code.Module("loadCInputCode")
 
@@ -8401,7 +8401,7 @@ class KernelWriterAssembly(KernelWriter):
         for vi in range(0, gwvw):
           # loop over registers within one scalar
           for rIdx in range(0, regsPerScalar):
-            module.addCode(replacePlaceHolder(codeAccVgprRead.items().pop(0), "__placeholder__", ss.elementSumIdx[elementIdx]*regsPerScalar + regsPerScalar*vi + rIdx))
+            module.addCode(replaceHolder(codeAccVgprRead.items().pop(0), ss.elementSumIdx[elementIdx]*regsPerScalar + regsPerScalar*vi + rIdx))
 
       if not kernel["MIArchVgpr"]:
         module.addInst("s_nop", "1", "2 wait states required before reading vgpr")
@@ -8417,7 +8417,7 @@ class KernelWriterAssembly(KernelWriter):
           regsPerScalar = self.bpeCinternal//self.bpr # register per scalar
           for elementIdx in range(0, len(batchElements)):
             for vi in range(0, gwvw):
-              module.addCode(replacePlaceHolder(codeMulAlpha.items().pop(0), "__placeholder__", (ss.elementSumIdx[elementIdx]*regsPerScalar + regsPerScalar*vi )))
+              module.addCode(replaceHolder(codeMulAlpha.items().pop(0), (ss.elementSumIdx[elementIdx]*regsPerScalar + regsPerScalar*vi )))
 
     ########################################
     # Atomic
@@ -9443,11 +9443,11 @@ class KernelWriterAssembly(KernelWriter):
           if not kernel["MIArchVgpr"]:
             accStr = accvgpr(srcIdx)
             self.codeAccVgprRead.itemList[destIdx] = Code.Inst("v_accvgpr_read_b32",
-                                                            vgpr("ValuC+__placeholder__"),
+                                                            vgpr(Holder(name="ValuC")),
                                                             accStr, "copy acc to vreg[%u]" % destIdx)
           else:
             self.codeAccVgprRead.itemList[destIdx] = Code.Inst("v_mov_b32",
-                                                              vgpr("ValuC+__placeholder__"),
+                                                              vgpr(Holder(name="ValuC")),
                                                               vgpr("ValuC+%u"%srcIdx), "copy MI out reg to vreg[%u]" % destIdx)
 
     return module
@@ -9468,16 +9468,16 @@ class KernelWriterAssembly(KernelWriter):
       destIdx = acc2arch[i]
       srcIdx  = i * kernel["MIRegPerOut"]
       if kernel["ProblemType"]["ComputeDataType"].isDouble():
-        self.codeMulAlpha.itemList[destIdx] = Code.Inst("v_mul_f64", vgpr("ValuC+__placeholder__",2),
+        self.codeMulAlpha.itemList[destIdx] = Code.Inst("v_mul_f64", vgpr(Holder(name="ValuC"),2),
                                                        sgpr("Alpha",2),
                                                        vgpr("ValuC+%u"%srcIdx,2), "Multiply MI out reg with alpha")
       elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
           (kernel["ProblemType"]["ComputeDataType"].isHalf() and kernel["ProblemType"]["HighPrecisionAccumulate"]):
-        self.codeMulAlpha.itemList[destIdx] = Code.Inst("v_mul_f32", vgpr("ValuC+__placeholder__"),
+        self.codeMulAlpha.itemList[destIdx] = Code.Inst("v_mul_f32", vgpr(Holder(name="ValuC")),
                                                        sgpr("Alpha"),
                                                        vgpr("ValuC+%u"%srcIdx), "Multiply MI out reg with alpha")
       elif kernel["ProblemType"]["ComputeDataType"].isInt32():
-        self.codeMulAlpha.itemList[destIdx] = Code.Inst("v_mul_lo_u32", vgpr("ValuC+__placeholder__"),
+        self.codeMulAlpha.itemList[destIdx] = Code.Inst("v_mul_lo_u32", vgpr(Holder(name="ValuC")),
                                                        sgpr("Alpha"),
                                                        vgpr("ValuC+%u"%srcIdx), "Multiply MI out reg with alpha")
       elif kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
@@ -9491,9 +9491,9 @@ class KernelWriterAssembly(KernelWriter):
         # tmp2 = a.imag * b.real
         imod.addInst("v_mul_f64", vgpr(vtmp2,2), sgpr("Alpha+2",2), vgpr("ValuC+%u"%srcIdx,2), "")
         # c.real = a.real * b.real - a.imag * b.imag = tmp1 - a.imag * b.imag
-        imod.addInst("v_fma_f64", vgpr("ValuC+__placeholder__",2), sgpr("Alpha+2",2), vgpr("ValuC+%u"%(srcIdx+accImOffset),2), vgpr(vtmp1,2), "")
+        imod.addInst("v_fma_f64", vgpr(Holder(name="ValuC"),2), sgpr("Alpha+2",2), vgpr("ValuC+%u"%(srcIdx+accImOffset),2), vgpr(vtmp1,2), "")
         # c.imag = a.real * b.imag + a.imag * b.real = a.real * b.imag + tmp2
-        imod.addInst("v_fma_f64", vgpr("ValuC+__placeholder__ +2",2), sgpr("Alpha+0",2), vgpr("ValuC+%u"%(srcIdx+accImOffset),2), vgpr(vtmp2,2), "")
+        imod.addInst("v_fma_f64", vgpr(Holder(name="ValuC+2"),2), sgpr("Alpha+0",2), vgpr("ValuC+%u"%(srcIdx+accImOffset),2), vgpr(vtmp2,2), "")
         self.codeMulAlpha.itemList[destIdx] = imod
 
     return module

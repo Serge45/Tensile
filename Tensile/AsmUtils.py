@@ -21,7 +21,7 @@
 
 from math import log
 from enum import Enum
-from .Code import HolderContainer, RegisterContainer, Module, Inst, Item, BranchInst, WaitCnt
+from .Code import RegName, HolderContainer, RegisterContainer, Module, Inst, Item, BranchInst, WaitCnt
 from .Common import printExit
 import random
 import string
@@ -34,21 +34,23 @@ def gpr(*args):
     gprType = args[0]
     args = args[1]
     if isinstance(args[0], Holder):
-        idx = args[0].idx
+        idx  = args[0].idx
+        name = args[0].name
         if len(args) == 1:
-            return HolderContainer(gprType, idx, 1)
+            return HolderContainer(gprType, name, idx, 1)
         elif len(args) == 2:
-            return HolderContainer(gprType, idx, args[1])
+            return HolderContainer(gprType, name, idx, args[1])
     if isinstance(args[0], int):
         if len(args) == 1:
             return RegisterContainer(gprType, None, args[0], 1)
         elif len(args) == 2:
             return RegisterContainer(gprType, None, args[0], args[1])
     if isinstance(args[0], str):
+        name = generateRegName(args[0])
         if len(args) == 1:
-            return RegisterContainer(gprType, args[0], None, 1)
+            return RegisterContainer(gprType, name, None, 1)
         elif len(args) == 2:
-            return RegisterContainer(gprType, args[0], None, args[1])
+            return RegisterContainer(gprType, name, None, args[1])
 
 def vgpr(*args):
     return gpr("v", args)
@@ -62,9 +64,23 @@ def accvgpr(*args):
 def mgpr(*args):
     return gpr("m", args)
 
+def generateRegName(rawText):
+    splitTxt = rawText.split("+")
+    offsets = []
+    if len(splitTxt) > 1:
+        for arg in splitTxt[1:]:
+            offsets.append(int(arg))
+    return RegName(splitTxt[0], *offsets) if offsets else RegName(splitTxt[0])
+
 class Holder:
-    def __init__(self, idx):
-        self.idx = idx
+    def __init__(self, idx=None, name=None):
+        if name:
+            self.name = generateRegName(name)
+            assert(idx == None)
+        else:
+            self.name = name
+            assert(name == None)
+        self.idx    = idx
 
 ########################################
 # Log 2
@@ -386,22 +402,23 @@ def saturateCastInt(sumIdxV, tmpVgpr, tmpSgpr, lowerBound, upperBound, type=Satu
         module.addInst("v_max_i32", vgpr("ValuC+%u"%(sumIdxV)), lowerBound, vgpr("ValuC+%u"%(sumIdxV)), "x = max(%d, x)"%lowerBound )
     return module
 
-def replacePlaceHolder(module, srcStr, dst):
-    assert(isinstance(module, Item))
+def replaceHolder(module, dst):
     if isinstance(module, Module):
         for item in module.items():
-            replacePlaceHolder(item, srcStr, dst)
+            replaceHolder(item, dst)
     elif isinstance(module, Inst):
         for param in module.params:
-            param.replaceRegName(srcStr, dst)
+            if isinstance(param, HolderContainer):
+                param.setRegNum(dst)
+                param = param.getCopiedRC()
     elif isinstance(module, WaitCnt):
         assert(isinstance(dst, int))
-        if module.vmcnt == srcStr:
-            module.vmcnt = dst
-        if module.lgkmcnt == srcStr:
-            module.lgkmcnt = dst
-        if module.vscnt == srcStr:
-            module.vscnt = dst
+        if isinstance(module.vmcnt, HolderContainer):
+            module.vmcnt = module.vmcnt.holderIdx + dst
+        if isinstance(module.lgkmcnt, HolderContainer):
+            module.lgkmcnt = module.lgkmcnt.holderIdx + dst
+        if isinstance(module.vscnt, HolderContainer):
+            module.vscnt = module.vscnt.holderIdx + dst
 
     return module
 

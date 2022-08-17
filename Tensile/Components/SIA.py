@@ -20,7 +20,7 @@
 ################################################################################
 
 from .. import Code
-from ..AsmUtils import replacePlaceHolder
+from ..AsmUtils import replaceHolder
 from ..Common import roundUp
 from ..Component import SIA
 
@@ -762,21 +762,23 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
                     imodNGLL.addWaitCnt(lgkmcnt=-1, \
                         vmcnt=min(maxVmcnt, readsToWaitNGLL  + readsToWaitDTV + readsToWaitAdjustForStoreC), vscnt=-1, \
                         comment="wait for global read before writing to local")
-            # PK and StoreCUnroll is removed so you cannot find any __placeholder__ in s_waitcnt
+            # PK and StoreCUnroll is removed so you cannot find any HolderContainer in s_waitcnt
             if kernel["PrefetchGlobalRead"]==2:
-                if "s_waitcnt" in str(item) and "__placeholder__" in str(item):
+                hasHolder, wcList = hasHolderInWaitCnt(item)
+                if hasHolder:
                     readsToWaitAdjust = readsToWait + readsToWaitDTV
                     if kernel["PrefetchGlobalRead"]==2:
                     # PGR=2 special cases
                         if (not kernel["ProblemType"]["UseBeta"]):
                         # no Load C case
                             if not firstIter:
-                            # PGR=2 and not firstIter case, __placeholder__ includes num of storeC from previous Iter
+                            # PGR=2 and not firstIter case, HolderContainer includes num of storeC from previous Iter
                                 readsToWaitAdjust += readsToWaitAdjustForStoreC
                     if kernel["NoLdsWriteCode"] and kernel["PrefetchGlobalRead"]!=2:
                         # DirectToLds or DirectToVgpr for both A and B case, use  the number of global read for both A and B as vmcnt (only for PGR=1)
                         readsToWaitAdjust = len(list(writer.globalReadACode.middle.items())) + len(list(writer.globalReadBCode.middle.items()))
-                    item = replacePlaceHolder(item, "__placeholder__", (readsToWaitAdjust))
+                    for wc in wcList:
+                        replaceHolder(wc, (readsToWaitAdjust))
 
             imod.addCode(item)
             # schedule global instruction that need to be scheduled later
@@ -788,9 +790,11 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
                     reads = reads + readsInc
                     if reads > 1:
                         break
-                    # PK and StoreCUnroll is removed so you cannot find any __placeholder__ in s_waitcnt
-                    if "s_waitcnt" in str(itemGR) and "__placeholder__" in str(itemGR):
-                        replacePlaceHolder(itemGR, "__placeholder__", (readsToWait))
+                    # PK and StoreCUnroll is removed so you cannot find any HolderContainer in s_waitcnt
+                    hasHolder, wcList = hasHolderInWaitCnt(itemGR)
+                    if hasHolder:
+                        for wc in wcList:
+                            replaceHolder(wc, (readsToWait))
                         imod.addCode(itemGR)
                     else:
                         imod.addCode(itemGR)
@@ -810,3 +814,28 @@ def schedLocalWrite(writer, kernel, numLocalWriteModPerIter, numLocalWritesPerSc
 
     # should never run out of items to schedule
     assert not itemsLWToSched # should have scheduled everthing already
+
+################################################################################
+################################################################################
+###
+###   Helper function
+###
+################################################################################
+################################################################################
+
+def hasHolderInWaitCnt(module):
+    wcList = []
+    hasHolder = False
+    assert(isinstance(module, Code.Item))
+    if isinstance(module, Code.Module):
+        for item in module.items():
+            tmpHasHolder, tmpList = hasHolderInWaitCnt(item)
+            hasHolder = hasHolder or tmpHasHolder
+            wcList.extend(tmpList)
+    elif isinstance(module, Code.WaitCnt):
+        wcList.append(module)
+        if isinstance(module.lgkmcnt, Code.HolderContainer) or \
+           isinstance(module.vmcnt, Code.HolderContainer) or \
+           isinstance(module.vscnt, Code.HolderContainer):
+           hasHolder = True
+    return hasHolder, wcList

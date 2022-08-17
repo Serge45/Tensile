@@ -28,6 +28,38 @@ import math
 # Global to print module names around strings
 printModuleNames = 0
 
+class RegName:
+    def __init__(self, name, *args):
+        self.name    = name
+        self.offsets = []
+        for offset in args:
+          self.offsets.append(offset)
+
+    def getTotalOffsets(self):
+      total = 0
+      if self.offsets:
+        for i in self.offsets:
+          total += i
+      return total
+
+    def __key(self) -> tuple:
+      return (self.name, str(self.offsets))
+
+    def __hash__(self) -> hash:
+      return hash(self.__key())
+
+    def __eq__(self, __o: object) -> bool:
+      if not isinstance(__o, RegName):
+        return False
+      return (self.name == __o.name) and (self.offsets == __o.offsets)
+
+    def __str__(self) -> str:
+      ss = self.name
+      if self.offsets:
+        for i in self.offsets:
+          ss += "+%u"%i
+      return ss
+
 class RegisterContainer:
   def __init__(self, regType, regName, regIdx, regNum) -> None:
     self.regType = regType
@@ -43,23 +75,30 @@ class RegisterContainer:
   def replaceRegName(self, srcName, dst):
     if self.regName:
       if isinstance(dst, int):
-        if self.regName == srcName: # Exact match
-          self.regName = ""
-          self.regIdx = dst
+        if self.regName.name == srcName: # Exact match
+          self.regIdx = dst + self.regName.offset
+          self.regName = None
         else:
-          self.regName = self.regName.replace(srcName, str(dst))
+          self.regName.name = self.regName.name.replace(srcName, str(dst))
       elif isinstance(dst, str):
-        self.regName = self.regName.replace(srcName, dst)
+        self.regName.name = self.regName.name.replace(srcName, dst)
       else:
         assert("Dst type unknown %s" % str(type(dst)) and 0)
 
+  # This get the name without offsets
   def getRegNameWithType(self):
     assert(self.regName)
-    return "%sgpr%s" % (self.regType, self.regName)
+    return "%sgpr%s" % (self.regType, str(self.regName.name))
+
+  # This get the name with offsets
+  def getCompleteRegNameWithType(self):
+    assert(self.regName)
+    return "%sgpr%s" % (self.regType, str(self.regName))
 
   def __eq__(self, o) -> bool:
     if not isinstance(o, RegisterContainer):
       return False
+    # FIXME: should compare only with regIdx
     isSame = (self.regName == o.regName) if (self.regIdx == None) else (self.regIdx == o.regIdx)
     return (self.regType == o.regType) and isSame and (self.regNum == o.regNum)
 
@@ -76,10 +115,10 @@ class RegisterContainer:
 
     if self.regName:
       if self.regNum == 1:
-        return "%s[%sgpr%s]"%(self.regType, self.regType, self.regName)
+        return "%s[%sgpr%s]"%(self.regType, self.regType, str(self.regName))
       else:
-        return "%s[%sgpr%s:%sgpr%s+%u]"%(self.regType, self.regType, self.regName, \
-                self.regType, self.regName, self.regNum-1)
+        return "%s[%sgpr%s:%sgpr%s+%u]"%(self.regType, self.regType, str(self.regName), \
+                self.regType, str(self.regName), self.regNum-1)
     else:
       if self.regNum == 1:
         return "%s%u" % (self.regType, self.regIdx)
@@ -87,15 +126,29 @@ class RegisterContainer:
         return "%s[%u:%u]" % (self.regType, self.regIdx, self.regIdx+self.regNum-1)
 
 class HolderContainer(RegisterContainer):
-  def __init__(self, regType, holderIdx, regNum) -> None:
+  def __init__(self, regType, holderName, holderIdx, regNum) -> None:
     super().__init__(regType, None, None, regNum)
-    self.holderIdx = holderIdx
+    if holderIdx != None:
+      assert(holderName == None)
+      self.holderIdx    = holderIdx
+      self.holderType   = 0
+    else:
+      assert(holderIdx == None)
+      self.holderName   = holderName
+      self.holderType   = 1
 
-  def setRegIdx(self, idx):
-    self.regIdx = self.holderIdx + idx
+  def setRegNum(self, num):
+    if self.holderType == 0:
+      self.regIdx = self.holderIdx + num
+    elif self.holderType == 1:
+      self.regName = deepcopy(self.holderName)
+      self.regName.offsets.insert(0, num)
 
   def getCopiedRC(self):
-    assert(self.regIdx != None)
+    if self.holderType == 0:
+      assert(self.regIdx != None)
+    elif self.holderType == 1:
+      assert(self.regName != None)
     return RegisterContainer(self.regType, self.regName, self.regIdx, self.regNum)
 
 def slash(comment):

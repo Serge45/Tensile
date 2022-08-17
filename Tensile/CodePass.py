@@ -159,12 +159,7 @@ def setName2RegNum(gpr, assignmentDict):
     assert(isinstance(gpr, Code.RegisterContainer))
     if gpr.regIdx == None and gpr.regName:
         name = gpr.getRegNameWithType()
-        m = re.findall(r'^(.+?)\+(\d+)', name)
-        if m:
-            m = m[0]
-            num = assignmentDict[m[0]] + int(m[1])
-        else:
-            num = assignmentDict[name]
+        num = assignmentDict[name] + gpr.regName.getTotalOffsets()
         gpr.regIdx = num
     RegNumList = []
     for i in range(0, gpr.regNum):

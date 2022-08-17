@@ -22,7 +22,7 @@
 from . import Code
 from . import CodePass
 from . import Common
-from .AsmUtils import replacePlaceHolder
+from .AsmUtils import replaceHolder
 from .Common import globalParameters, CHeader, roundUp, Backup, print2, printExit
 from .Component import Component
 from .CustomKernels import isCustomKernelConfig
@@ -1022,10 +1022,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if kernel["DirectToVgprA"]:
         tensorParameters1st, tensorParameters2nd = tensorParameters2nd, tensorParameters1st
       moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParameters1st, usePlaceHolder=False)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
+      module.addCode(replaceHolder(moduleTmp, 0))
       module.addCode(self.globalReadDo(kernel, 0, tensorParameters1st, 0))
       moduleTmp = self.directToLdsM0Update(kernel, 0, tensorParameters2nd, usePlaceHolder=False)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
+      module.addCode(replaceHolder(moduleTmp, 0))
       module.addCode(self.globalReadDo(kernel, 0, tensorParameters2nd, 0))
       module.addCode(self.globalReadIncrementAB(kernel, self.unrollIdx, pfi))
 
@@ -1926,13 +1926,13 @@ class KernelWriter(metaclass=abc.ABCMeta):
         tc1, tc2 = tc2, tc1
       module.addComment1("Update M0 for DTLDS")
       moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParameters1st)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
+      module.addCode(replaceHolder(moduleTmp, 0))
       module.addComment1("global read %s"%tc1)
       vregSetIdx = 0
       module.addCode(self.globalReadDo(kernel, 2, tensorParameters1st, vregSetIdx))
       module.addComment1("Update M0 for DTLDS")
       moduleTmp = self.directToLdsM0Update(kernel, 1, tensorParameters2nd)
-      module.addCode(replacePlaceHolder(moduleTmp, "__placeholder__", 0))
+      module.addCode(replaceHolder(moduleTmp, 0))
       module.addComment1("global read %s"%tc2)
       vregSetIdx = 0
       module.addCode(self.globalReadDo(kernel, 2, tensorParameters2nd, vregSetIdx))
@@ -3359,6 +3359,23 @@ for codeObjectFileName in codeObjectFileNames:
   ##############################################################################
   # flip Vreg set for DirectToVgpr in global read
   ##############################################################################
+  def replaceSet(module, srcStr, dst):
+    assert(isinstance(module, Code.Item))
+    if isinstance(module, Code.Module):
+      for item in module.items():
+        replaceSet(item, srcStr, dst)
+    elif isinstance(module, Code.Inst):
+      for param in module.params:
+        param.replaceRegName(srcStr, dst)
+    elif isinstance(module, Code.WaitCnt):
+      assert(isinstance(dst, int))
+      if module.vmcnt == srcStr:
+        module.vmcnt = dst
+      if module.lgkmcnt == srcStr:
+        module.lgkmcnt = dst
+      if module.vscnt == srcStr:
+        module.vscnt = dst
+
   def flipVregSetForDirectToVgprInGlobalRead(self, kernel, item):
     # need to swap VGPR register set for odd code
     baseName = "G2LA" if kernel["DirectToVgprA"] else "G2LB" # only one of them is enabled
@@ -3367,10 +3384,10 @@ for codeObjectFileName in codeObjectFileNames:
     itemStr = str(item)
     if set0 in itemStr:
       # replace set0 with set1
-      replacePlaceHolder(item, set0, set1)
+      replaceSet(item, set0, set1)
     elif set1 in itemStr:
       # replace set1 with set0
-      replacePlaceHolder(item, set1, set0)
+      replaceSet(item, set1, set0)
     return item
 
   ##############################################################################
