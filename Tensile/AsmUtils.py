@@ -288,6 +288,41 @@ def scalarMagicDiv(dst, dividend, magicTag):
                                   magicAbit="MagicAbitSize"+magicTag,
                                   magicShift="MagicShiftSize"+magicTag)
 
+##############################################################################
+# Perform a magic division (mul by magic number and shift)
+# dest is two consec SGPR, used for intermediate temp as well as final result
+# result quotient returned in sgpr(dest,1)
+# tmpVgpr: Size 2
+##############################################################################
+def sMagicDiv(dest, hasSMulHi, dividend, magicNumber, magicShift, tmpVgpr):
+    module = Module("sMagicDiv")
+    module.addModuleAsFlatItems(s_mul_int_64_32(hasSMulHi, \
+                                sgpr(dest), sgpr(dest+1), dividend, magicNumber, \
+                                False, tmpVgpr, "s_magic mul"))
+    module.addInst("s_lshr_b64", sgpr(dest,2), sgpr(dest,2), magicShift, "sMagicDiv")
+    return module
+
+##############################################################################
+# Perform a sgpr version of magic division algo 2 (mul by magic number, Abit and shift)
+# dest is three consec SGPR, used for intermediate temp as well as final result
+# result quotient returned in sgpr(dest,1)
+##############################################################################
+def sMagicDivAlg2(dest, dividend, magicNumber, magicShiftAbit):
+    # dest+0: q,
+    # dest+1: intermediate for magic div
+    # dest+2: A tmpS to store the 'Abit' and the final Shift (use tmpS to save sgpr)
+    tmpS = dest+2
+
+    module = Module("sMagicDivAlg2")
+    module.addInst("s_mul_hi_u32", sgpr(dest+1), dividend, magicNumber, " s_magic mul, div alg 2")
+    module.addInst("s_lshr_b32", sgpr(tmpS), magicShiftAbit, 31, " tmpS = extract abit")                              # tmpS = MagicAbit
+    module.addInst("s_mul_i32", sgpr(dest), dividend, sgpr(tmpS), " s_magic mul, div alg 2")
+    module.addInst("s_add_u32", sgpr(dest), sgpr(dest), sgpr(dest+1), "")
+
+    module.addInst("s_and_b32",  sgpr(tmpS), magicShiftAbit, hex(0x7fffffff), " tmpS = remove abit to final shift")   # tmpS = MagicShift
+    module.addInst("s_lshr_b32", sgpr(dest), sgpr(dest), sgpr(tmpS), " sMagicDiv Alg 2")
+    return module
+
 ########################################
 # Multiply
 # product register, operand register, multiplier

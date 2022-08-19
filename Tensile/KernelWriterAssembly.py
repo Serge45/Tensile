@@ -32,9 +32,9 @@ from .AsmAssert import Assert, bomb
 from .AsmMacros import InstMacros
 from .AsmUtils import Holder, vgpr, sgpr, accvgpr, mgpr, log2, s_mul_int_64_32, \
                       vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
-                      scalarStaticDivideAndRemainder, staticMultiply, scalarStaticMultiply, sBranchIfZero, \
-                      replaceHolder, \
-                      SaturateCastType, LabelManager
+                      scalarStaticDivideAndRemainder, sMagicDiv, \
+                      staticMultiply, scalarStaticMultiply, sBranchIfZero, \
+                      replaceHolder, SaturateCastType, LabelManager
 from .Activation import ActivationModule, ActivationType
 
 from math import ceil, log
@@ -2331,38 +2331,6 @@ class KernelWriterAssembly(KernelWriter):
 
     return module
 
-  ##############################################################################
-  # Perform a magic division (mul by magic number and shift)
-  # dest is two consec SGPR, used for intermediate temp as well as final result
-  # result quotient returned in sgpr(dest,1)
-  ##############################################################################
-  def sMagicDiv(self, kernel, dest, dividend, magicNumber, magicShift):
-    module = Code.Module("sMagicDiv")
-    module.addModuleAsFlatItems(self.s_mul_u64_u32(sgpr(dest), sgpr(dest+1), dividend, magicNumber, "s_magic mul"))
-    module.addInst("s_lshr_b64", sgpr(dest,2), sgpr(dest,2), magicShift, "sMagicDiv")
-    return module
-
-  ##############################################################################
-  # Perform a sgpr version of magic division algo 2 (mul by magic number, Abit and shift)
-  # dest is three consec SGPR, used for intermediate temp as well as final result
-  # result quotient returned in sgpr(dest,1)
-  ##############################################################################
-  def sMagicDivAlg2(self, kernel, dest, dividend, magicNumber, magicShiftAbit):
-    # dest+0: q,
-    # dest+1: intermediate for magic div
-    # dest+2: A tmpS to store the 'Abit' and the final Shift (use tmpS to save sgpr)
-    tmpS = dest+2
-
-    module = Code.Module("sMagicDivAlg2")
-    module.addInst("s_mul_hi_u32", sgpr(dest+1), dividend, magicNumber, " s_magic mul, div alg 2")
-    module.addInst("s_lshr_b32", sgpr(tmpS), magicShiftAbit, 31, " tmpS = extract abit")                              # tmpS = MagicAbit
-    module.addInst("s_mul_i32", sgpr(dest), dividend, sgpr(tmpS), " s_magic mul, div alg 2")
-    module.addInst("s_add_u32", sgpr(dest), sgpr(dest), sgpr(dest+1), "")
-
-    module.addInst("s_and_b32",  sgpr(tmpS), magicShiftAbit, hex(0x7fffffff), " tmpS = remove abit to final shift")   # tmpS = MagicShift
-    module.addInst("s_lshr_b32", sgpr(dest), sgpr(dest), sgpr(tmpS), " sMagicDiv Alg 2")
-    return module
-
   def extractPackedCoord1ToRowStart(self, kernel, packedC1, packedCoordVgpr, storeChar):
     # calculate packed rowStart vgpr
     # vgprTmp assignments:
@@ -2457,7 +2425,7 @@ class KernelWriterAssembly(KernelWriter):
       # blockId and serial within block
 
       # note this overwrites blockId2+1
-      module.addCode(self.sMagicDiv(kernel, dest=blockId2, dividend=sgpr("WorkGroup1"), \
+      module.addCode(self.sMagicDivWrapper(dest=blockId2, dividend=sgpr("WorkGroup1"), \
           magicNumber=sgpr(wgmDivisorMagicNumber), magicShift=smallNumMagicShift))
       module.addInst("s_mul_i32", sgpr(wgSerial2), sgpr(blockId2), absWgm, "quotient * non-magic divisor")
       module.addInst("s_sub_u32", sgpr(wgSerial2), sgpr("WorkGroup1"), sgpr(wgSerial2), "WorkGroup1=remainder")
@@ -2478,7 +2446,7 @@ class KernelWriterAssembly(KernelWriter):
 
       assert(self.sgprs[firstWg] & 0x1 == 0) # must be even and ...
       assert(self.sgprs[firstWg]+1 == self.sgprs[secondWg] ) # must be consecutive (for magic div below)
-      module.addCode(self.sMagicDiv(kernel, dest=self.sgprs[firstWg], dividend=sgpr(wgSerial2), \
+      module.addCode(self.sMagicDivWrapper(dest=self.sgprs[firstWg], dividend=sgpr(wgSerial2), \
           magicNumber=sgpr(wgmDivisorMagicNumber), magicShift=smallNumMagicShift))
       if kernel["WorkGroupMapping"]<0 :
         module.addInst("s_mov_b32", sgpr("WorkGroup0"), sgpr(firstWg), "")
@@ -9498,6 +9466,16 @@ class KernelWriterAssembly(KernelWriter):
         imod.addInst("v_fma_f64", vgpr(Holder(name="ValuC+2"),2), sgpr("Alpha+0",2), vgpr("ValuC+%u"%(srcIdx+accImOffset),2), vgpr(vtmp2,2), "")
         self.codeMulAlpha.itemList[destIdx] = imod
 
+    return module
+
+  ##############################################################################
+  # Wrappers
+  ##############################################################################
+
+  def sMagicDivWrapper(self, dest, dividend, magicNumber, magicShift):
+    tmpVgpr = self.vgprPool.checkOut(2)
+    module = sMagicDiv(dest, globalParameters["AsmCaps"][self.version]["HasSMulHi"], dividend, magicNumber, magicShift, tmpVgpr)
+    self.vgprPool.checkIn(tmpVgpr)
     return module
 
   def s_mul_u64_u32 (self, dst0, dst1,  src0, src1, comment):
