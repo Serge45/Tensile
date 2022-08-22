@@ -403,6 +403,32 @@ def sBranchIfZero(sgprName, computeDataType, tmpSgpr, laneSC, label, waveFrontSi
       printExit("Unsupported compute data type: %s" % str(computeDataType))
     return module
 
+def sBranchIfNotZero(sgprName, computeDataType, label, vcc):
+    module = Module("sBranchIfNotZero")
+    sgprStr = "s[{}]".format(sgprName)
+    if computeDataType.isDoubleComplex():
+        module.addInst("v_cmp_eq_f64", vcc, sgpr(sgprName, 2), 0.0, "%s.real == 0.0 ?" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_vccz", label.getLabelName(), "branch if %s.real != 0" % sgprStr))
+        sgprVar = "%s+2" % sgprName if isinstance(sgprName, str) else sgprName + 2
+        module.addInst("v_cmp_eq_f64", vcc, sgpr(sgprVar, 2), 0.0, "%s.imag == 0.0 ?" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_vccz", label.getLabelName(), "branch if %s.imag != 0" % sgprStr))
+    elif computeDataType.isDouble():
+        module.addInst("v_cmp_eq_f64", vcc, sgpr(sgprName, 2), 0.0, "%s == 0.0 ?" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_vccz", label.getLabelName(), "branch if %s != 0" % sgprStr))
+    elif computeDataType.isSingleComplex():
+        module.addInst("v_cmp_eq_f32", vcc, sgpr(sgprName), 0.0, "%s.real == 0.0f ?" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_vccz", label.getLabelName(), "branch if %s.real != 0" % sgprStr))
+        sgprVar = "%s+1" % sgprName if isinstance(sgprName, str) else sgprName + 1
+        module.addInst("v_cmp_eq_f32", vcc, sgpr(sgprVar), 0.0, "%s.imag == 0.0f ?" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_vccz", label.getLabelName(), "branch if %s.imag != 0" % sgprStr))
+    elif computeDataType.isSingle() or computeDataType.isHalf() or computeDataType.isBFloat16():
+        module.addInst("v_cmp_eq_f32", vcc, sgpr(sgprName), 0.0, "%s == 0.0f ?" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_vccz", label.getLabelName(), "branch if %s != 0" % sgprStr))
+    else:
+        module.addInst("s_cmp_eq_u32", sgpr(sgprName), 0, "%s == 0 ?" % sgprStr)
+        module.addCode(BranchInst("s_cbranch_scc0", label.getLabelName(), "branch if %s != 0" % sgprStr))
+    return module
+
 ########################################
 # Saturate Cast Integer
 ########################################

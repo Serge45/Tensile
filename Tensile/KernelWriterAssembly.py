@@ -33,7 +33,7 @@ from .AsmMacros import InstMacros
 from .AsmUtils import Holder, vgpr, sgpr, accvgpr, mgpr, log2, s_mul_int_64_32, \
                       vectorStaticDivideAndRemainder, vectorStaticDivide, vectorStaticRemainder, \
                       scalarStaticDivideAndRemainder, sMagicDiv, \
-                      staticMultiply, scalarStaticMultiply, sBranchIfZero, \
+                      staticMultiply, scalarStaticMultiply, sBranchIfZero, sBranchIfNotZero, \
                       replaceHolder, SaturateCastType, LabelManager
 from .Activation import ActivationModule, ActivationType
 
@@ -2152,42 +2152,21 @@ class KernelWriterAssembly(KernelWriter):
         module.addCode(self.getKernArg("AddressDbg"))
         module.addCode(self.getKernArg("AddressDbg+1"))
 
-      self.getKernArg("Tensor2dSizeC+0",0)
-      self.getKernArg("Tensor2dSizeC+1",0)
+      self.getKernArg("Tensor2dSizeC+0",0)  # Jump offset
+      self.getKernArg("Tensor2dSizeC+1",0)  # Jump offset
 
       load = self.numSgprToLoad
       sgprStart = self.sgprs["Tensor2dSizeA"]
       while load > 0:
-        if load >= 16:
-          load -= 16
-          module.addInst("_s_load_b512", sgpr(sgprStart,16), sgpr("KernArgAddress",2), hex(self.kernArgOffset), "")
-          sgprStart += 16
-          self.kernArgOffset += 16 * 4
-          continue
-        if load >= 8:
-          load -= 8
-          module.addInst("_s_load_b256", sgpr(sgprStart,8), sgpr("KernArgAddress",2), hex(self.kernArgOffset), "")
-          sgprStart += 8
-          self.kernArgOffset += 8 * 4
-          continue
-        if load >= 4:
-          load -= 4
-          module.addInst("_s_load_b128", sgpr(sgprStart,4), sgpr("KernArgAddress",2), hex(self.kernArgOffset), "")
-          sgprStart += 4
-          self.kernArgOffset += 4 * 4
-          continue
-        if load >= 2:
-          load -= 2
-          module.addInst("_s_load_b64", sgpr(sgprStart,2), sgpr("KernArgAddress",2), hex(self.kernArgOffset), "")
-          sgprStart += 2
-          self.kernArgOffset += 2 * 4
-          continue
-        if load >= 1:
-          load -= 1
-          module.addInst("_s_load_b32", sgpr(sgprStart), sgpr("KernArgAddress",2), hex(self.kernArgOffset), "")
-          sgprStart += 1
-          self.kernArgOffset += 1 * 4
-          continue
+        i = 16 # 16, 8, 4, 2, 1
+        while i >= 1:
+          if load >= i:
+            load -= i
+            module.addInst("_s_load_b%u"%(i * 32), sgpr(sgprStart,i), sgpr("KernArgAddress",2), hex(self.kernArgOffset), "")
+            sgprStart += i
+            self.kernArgOffset += i * 4
+            break
+          i = i // 2
       # currently align sgpr to kernel argument memory, and use s_load_bxxx to load argument as large as possible in one instruction
       # however, in order to match sgpr to kernel argument memory, some unnecessarily sgpr will also be defined, and caused wasting of sgpr.
       # TODO: more efficient way is to organize both sgpr and kernel argument memory in API
@@ -2204,22 +2183,16 @@ class KernelWriterAssembly(KernelWriter):
       module.addCode(".if", "0")
 
     # add offset to buffer
+    def addOffset2Buffer(imod, mat, value):
+      imod.addInst("s_lshl_b32", sgpr("Offset%s"%mat), sgpr("Offset%s"%mat), hex(value), "elements offset to bytes offset")
+      imod.addInst("s_add_u32",  sgpr("Address%s+0"%mat), sgpr("Address%s+0"%mat), sgpr("Offset%s"%mat), "add offset to buffer address")
+      imod.addInst("s_addc_u32", sgpr("Address%s+1"%mat), sgpr("Address%s+1"%mat), 0, "add offset to buffer address")
+
     if not kernel["_GlobalAccumulation"]:
-      module.addInst("s_lshl_b32", sgpr("OffsetD"), sgpr("OffsetD"), hex(log2(self.bpeCexternal)), "elements offset to bytes offset")
-      module.addInst("s_add_u32",  sgpr("AddressD+0"), sgpr("AddressD+0"), sgpr("OffsetD"), "add offset to buffer address")
-      module.addInst("s_addc_u32", sgpr("AddressD+1"), sgpr("AddressD+1"), 0, "add offset to buffer address")
-
-      module.addInst("s_lshl_b32", sgpr("OffsetC"), sgpr("OffsetC"), hex(log2(self.bpeCexternal)), "elements offset to bytes offset")
-      module.addInst("s_add_u32",  sgpr("AddressC+0"), sgpr("AddressC+0"), sgpr("OffsetC"), "add offset to buffer address")
-      module.addInst("s_addc_u32", sgpr("AddressC+1"), sgpr("AddressC+1"), 0, "add offset to buffer address")
-
-    module.addInst("s_lshl_b32", sgpr("OffsetA"), sgpr("OffsetA"), hex(log2(self.bpeAB)), "elements offset to bytes offset")
-    module.addInst("s_add_u32",  sgpr("AddressA+0"), sgpr("AddressA+0"), sgpr("OffsetA"), "add offset to buffer address")
-    module.addInst("s_addc_u32", sgpr("AddressA+1"), sgpr("AddressA+1"), 0, "add offset to buffer address")
-
-    module.addInst("s_lshl_b32", sgpr("OffsetB"), sgpr("OffsetB"), hex(log2(self.bpeAB)), "elements offset to bytes offset")
-    module.addInst("s_add_u32",  sgpr("AddressB+0"), sgpr("AddressB+0"), sgpr("OffsetB"), "add offset to buffer address")
-    module.addInst("s_addc_u32", sgpr("AddressB+1"), sgpr("AddressB+1"), 0, "add offset to buffer address")
+      addOffset2Buffer(module, "D", log2(self.bpeCexternal))
+      addOffset2Buffer(module, "C", log2(self.bpeCexternal))
+    addOffset2Buffer(module, "A", log2(self.bpeAB))
+    addOffset2Buffer(module, "B", log2(self.bpeAB))
 
     # self.groOffsetInMacroTile == 1 case, subtract pre-pad here
     if self.groOffsetInMacroTile:
@@ -2243,36 +2216,9 @@ class KernelWriterAssembly(KernelWriter):
     # so if alpha/beta=Half, they haven't been converted to f32
     # This means we can use ComputeDataType as AlphaType (even <h,h,h,h,"h,h"> +"HPA")
     if self.do["ApplyAlpha"]:
-
       module.addComment1("Short circuit condition if Alpha == 0, then sumDims=0")
       endCheckLabel = Code.Label("AlphaNonZero", "")
-      if kernel["ProblemType"]["ComputeDataType"].isDoubleComplex():
-        module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha.real == 0.0 ?")
-        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0"))
-        module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha+2", 2), 0.0, "Alpha.imag == 0.0 ?")
-        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0"))
-
-      elif kernel["ProblemType"]["ComputeDataType"].isDouble():
-        module.addInst("v_cmp_eq_f64", self.vcc, sgpr("Alpha", 2), 0.0, "Alpha == 0.0 ?")
-        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha != 0"))
-
-      elif kernel["ProblemType"]["ComputeDataType"].isSingleComplex():
-        module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha.real == 0.0f ?")
-        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.real != 0"))
-        module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha+1"), 0.0, "Alpha.imag == 0.0f ?")
-        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if Alpha.imag != 0"))
-
-      # AlphaType is f32 or two-concated-f16, or two-concated-bf16(not support)
-      elif kernel["ProblemType"]["ComputeDataType"].isSingle() or \
-           kernel["ProblemType"]["ComputeDataType"].isHalf() or \
-           kernel["ProblemType"]["ComputeDataType"].isBFloat16():
-        module.addInst("v_cmp_eq_f32", self.vcc, sgpr("Alpha"), 0.0, "Alpha == 0.0f ?")
-        module.addCode(Code.BranchInst("s_cbranch_vccz", endCheckLabel.getLabelName(), "branch if alpha != 0"))
-
-      # AlphaType is int32
-      else:
-        module.addInst("s_cmp_eq_u32", sgpr("Alpha"), 0, "Alpha == 0 ?")
-        module.addCode(Code.BranchInst("s_cbranch_scc0", endCheckLabel.getLabelName(), "branch if alpha != 0"))
+      module.addCode(sBranchIfNotZero("Alpha", kernel["ProblemType"]["ComputeDataType"], endCheckLabel, self.vcc))
 
       # Conditional set summation dimensions to 0 on SCC==1
       for i in range(0, self.numSgprSizesSum):
