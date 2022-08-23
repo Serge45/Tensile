@@ -198,7 +198,7 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
         module.addCode(vectorStaticRemainder(dummy, rReg, wgMT, glvw, tmpVgpr, tmpSgpr))
         for r in range(1, glvw):
             module.addInst("v_cmp_eq_u32", writer.vcc, vgpr(rReg), hex(r), "wgMT%%VW == %u"%r )
-            module.addInst("s_cbranch_vccnz", glvwLabels[(r-1)].getLabelName(), "branch to shift d%u r=%u"%(tP["idx"], r))
+            module.addCode(Code.BranchInst("s_cbranch_vccnz", glvwLabels[(r-1)].getLabelName(), "branch to shift d%u r=%u"%(tP["idx"], r)))
         module.addCode(Code.BranchInst("s_branch", glvwLabels[glvw-1].getLabelName(), "no shifting" ))
         writer.vgprPool.checkIn(rReg)
 
@@ -214,7 +214,7 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
                         label  = ob + OutBlocksInMI * (bm + matrixInstBCoal * tt)
                         target = ob + OutBlocksInMI * (bm + matrixInstBCoal * miWaveGroupCoal * tt)
                         module.addInst("v_cmp_eq_u32", writer.vcc, vgpr(mbReg), hex(target), "")
-                        module.addInst("s_cbranch_vccnz", MBblockLabels[r-1][label].getLabelName(), "branch to shift d%u r%u mb%u" % (tP["idx"], r, label))
+                        module.addCode(Code.BranchInst("s_cbranch_vccnz", MBblockLabels[r-1][label].getLabelName(), "branch to shift d%u r%u mb%u" % (tP["idx"], r, label)))
 
         for r in range(1, glvw):
             for mb in range(0, miOuterTTCoal * matrixInstBCoal * OutBlocksInMI):
@@ -223,7 +223,7 @@ class ShiftVectorComponentsMFMA(ShiftVectorComponents):
                 module.addCode(MBblockLabels[r-1][mb])
                 for vw in range(0, max(1, allContOutCoal//glvw)):
                     module.addInst("v_cmp_eq_u32", writer.vcc, vgpr(vwReg), hex(vw), "")
-                    module.addInst("s_cbranch_vccnz", VWBlockLabels[r-1][mb][vw], "branch to shift d%u r%u mb%u vw%u" % (tP["idx"], r, mb, vw))
+                    module.addCode(Code.BranchInst("s_cbranch_vccnz", VWBlockLabels[r-1][mb][vw].getLabelName(), "branch to shift d%u r%u mb%u vw%u" % (tP["idx"], r, mb, vw)))
 
         # blocks for handle M_size % vector width
         tReg  = writer.vgprPool.checkOut(min(glvw, allContOutCoal))

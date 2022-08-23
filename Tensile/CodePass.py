@@ -80,7 +80,7 @@ def RecordGraph(module, graph, assignmentDict):
             for i in range(len(graph["s"])):
                graph["s"][i].append(item)
         elif isinstance(item, Code.Inst):
-            branchInstList = ["s_setpc_b64", "s_branch", "s_cbranch_scc0", "s_cbranch_scc1", "s_cbranch_vccz"]
+            branchInstList = ["s_setpc_b64", "s_branch", "s_cbranch_scc0", "s_cbranch_scc1", "s_cbranch_vccz", "s_cbranch_vccnz"]
             if item.inst in branchInstList:
                 assert("Should not add branch inst without Code.BranchInst.")
             for p in item.params:
