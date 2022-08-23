@@ -777,10 +777,8 @@ class KernelWriterAssembly(KernelWriter):
     ########################################
     # globalReadA instruction; no flat_load2_*
     self.globalReadWidthA = float(tPA["nrcv"]*tPA["bpe"])/self.bpr
-    self.globalRead2CoalescedA = kernel["NumLoadsCoalescedA"]>1 \
-        or self.readCoalescedComponentsA
-    self.globalRead2PerpendicularA = kernel["NumLoadsPerpendicularA"] > 1 \
-        or self.readPerpendicularComponentsA
+    self.globalRead2CoalescedA = kernel["NumLoadsCoalescedA"]>1
+    self.globalRead2PerpendicularA = kernel["NumLoadsPerpendicularA"] > 1
     self.globalReadInstructionIdxA = \
         self.selectMemoryInstruction("GlobalRead", self.globalReadWidthA, \
         False, \
@@ -788,10 +786,8 @@ class KernelWriterAssembly(KernelWriter):
     ########################################
     # globalReadB instruction; no flat_load2_
     self.globalReadWidthB = float(tPB["nrcv"]*tPB["bpe"])/self.bpr
-    self.globalRead2CoalescedB = kernel["NumLoadsCoalescedB"]>1 \
-        or self.readCoalescedComponentsB
-    self.globalRead2PerpendicularB = kernel["NumLoadsPerpendicularB"] > 1 \
-        or self.readPerpendicularComponentsB
+    self.globalRead2CoalescedB = kernel["NumLoadsCoalescedB"]>1
+    self.globalRead2PerpendicularB = kernel["NumLoadsPerpendicularB"] > 1
     self.globalReadInstructionIdxB = \
         self.selectMemoryInstruction("GlobalRead", self.globalReadWidthB, \
         False, \
@@ -800,41 +796,31 @@ class KernelWriterAssembly(KernelWriter):
     ########################################
     # localWriteA instruction
     # for local, tile->para, unroll->perp
-    #self.localWriteWidthA = 1 if (self.writeTileDimComponentsA \
-    #    or self.writeUnrollDimComponentsA) else kernel["VectorWidth"]
+    # self.localWriteWidthA = 1 if tPA["wtc"] else kernel["VectorWidth"]
+    # wtc = writeTileDimComponents
     self.localWriteWidthA = tPA["nwcv"]*tPA["bpe"]//self.bpr
     if self.localWriteWidthA < 1:
       self.localWriteWidthA = (1.0*tPA["nwcv"]*tPA["bpe"])/self.bpr
-    self.localWrite2CoalescedA = tPA["nrc"]>1 \
-        or self.writeTileDimComponentsA
-    self.localWrite2PerpendicularA = tPA["nrp"]>1 \
-        or self.writeUnrollDimComponentsA
+    self.localWrite2CoalescedA = tPA["nrc"]>1 or tPA["wtc"]
+    self.localWrite2PerpendicularA = tPA["nrp"]>1
     # localWriteA stride tile
     if kernel["ProblemType"]["TLUA"]:
-      if self.writeTileDimComponentsA:
+      if tPA["wtc"]:
         self.localWriteStrideTileA = 1
         self.localWriteJoinTileA = "Components"
       else:
         self.localWriteStrideTileA = kernel["LSCA"]
         self.localWriteJoinTileA = "Coalesced"
     else:
-      if self.writeUnrollDimComponentsA:
-        self.localWriteStrideTileA = 1
-        self.localWriteJoinTileA = "Components"
-      else:
-        self.localWriteStrideTileA = kernel["LSPA"]
-        self.localWriteJoinTileA = "Perpendicular"
+      self.localWriteStrideTileA = kernel["LSPA"]
+      self.localWriteJoinTileA = "Perpendicular"
     self.localWriteStrideTileA = self.localWriteStrideTileA*tPA["bpe"]//self.bpr
     # localWriteA stride unroll
     if kernel["ProblemType"]["TLUA"]:
-      if self.writeUnrollDimComponentsA:
-        self.localWriteStrideUnrollA = 1*kernel["MacroTileA"]
-        self.localWriteJoinUnrollA = "Components"
-      else:
-        self.localWriteStrideUnrollA = kernel["LSCA"]*kernel["MacroTileA"]
-        self.localWriteJoinUnrollA = "Perpendicular"
+      self.localWriteStrideUnrollA = kernel["LSCA"]*kernel["MacroTileA"]
+      self.localWriteJoinUnrollA = "Perpendicular"
     else:
-      if self.writeTileDimComponentsA:
+      if tPA["wtc"]:
         self.localWriteStrideUnrollA = 1*kernel["MacroTileA"]
         self.localWriteJoinUnrollA = "Components"
       else:
@@ -851,41 +837,31 @@ class KernelWriterAssembly(KernelWriter):
     ########################################
     # localWriteB instruction
     # for local, tile->para, unroll->perp
-    #self.localWriteWidthB = 1 if (self.writeTileDimComponentsB \
-    #    or self.writeUnrollDimComponentsB) else kernel["VectorWidth"]
+    # self.localWriteWidthB = 1 if tPB["wtc"] else kernel["VectorWidth"]
+    # wtc = writeTileDimComponents
     self.localWriteWidthB = tPB["nwcv"]*tPB["bpe"]//self.bpr
     if self.localWriteWidthB < 1:
       self.localWriteWidthB = (1.0*tPB["nwcv"]*tPB["bpe"])/self.bpr
-    self.localWrite2CoalescedB = tPB["nrc"]>1 \
-        or self.writeTileDimComponentsB
-    self.localWrite2PerpendicularB = tPB["nrp"]>1 \
-        or self.writeUnrollDimComponentsB
+    self.localWrite2CoalescedB = tPB["nrc"]>1 or tPB["wtc"]
+    self.localWrite2PerpendicularB = tPB["nrp"]>1
     # localWriteB stride tile
     if kernel["ProblemType"]["TLUB"]:
-      if self.writeTileDimComponentsB:
+      if tPB["wtc"]:
         self.localWriteStrideTileB = 1
         self.localWriteJoinTileB = "Components"
       else:
         self.localWriteStrideTileB = kernel["LSCB"]
         self.localWriteJoinTileB = "Coalesced"
     else:
-      if self.writeUnrollDimComponentsB:
-        self.localWriteStrideTileB = 1
-        self.localWriteJoinTileB = "Components"
-      else:
-        self.localWriteStrideTileB = kernel["LSPB"]
-        self.localWriteJoinTileB = "Perpendicular"
+      self.localWriteStrideTileB = kernel["LSPB"]
+      self.localWriteJoinTileB = "Perpendicular"
     self.localWriteStrideTileB = (self.localWriteStrideTileB*tPB["bpe"])//self.bpr
     # localWriteB stride unroll
     if kernel["ProblemType"]["TLUB"]:
-      if self.writeUnrollDimComponentsB:
-        self.localWriteStrideUnrollB = 1*kernel["MacroTileB"]
-        self.localWriteJoinUnrollB = "Components"
-      else:
-        self.localWriteStrideUnrollB = kernel["LSCB"]*kernel["MacroTileB"]
-        self.localWriteJoinUnrollB = "Perpendicular"
+      self.localWriteStrideUnrollB = kernel["LSCB"]*kernel["MacroTileB"]
+      self.localWriteJoinUnrollB = "Perpendicular"
     else:
-      if self.writeTileDimComponentsB:
+      if tPB["wtc"]:
         self.localWriteStrideUnrollB = 1*kernel["MacroTileB"]
         self.localWriteJoinUnrollB = "Components"
       else:
@@ -1057,8 +1033,7 @@ class KernelWriterAssembly(KernelWriter):
     ####################################
     # num vgprs: global read addresses
     numGlobalReadsA = kernel["NumLoadsCoalescedA"] \
-        * kernel["NumLoadsPerpendicularA"] * kernel["GlobalLoadVectorWidthA"] \
-        * self.numReadVectorComponentsA
+        * kernel["NumLoadsPerpendicularA"] * kernel["GlobalLoadVectorWidthA"]
     numGlobalReadInstructionsA = (numGlobalReadsA * tPA["bpe"])//\
         (self.globalReadInstructionA.blockWidth * 4)
 
@@ -1068,8 +1043,7 @@ class KernelWriterAssembly(KernelWriter):
       numVgprGlobalReadAddressesA = numGlobalReadInstructionsA * self.rpga
 
     numGlobalReadsB = kernel["NumLoadsCoalescedB"] \
-        * kernel["NumLoadsPerpendicularB"] * kernel["GlobalLoadVectorWidthB"] \
-        * self.numReadVectorComponentsB
+        * kernel["NumLoadsPerpendicularB"] * kernel["GlobalLoadVectorWidthB"]
     numGlobalReadInstructionsB = (numGlobalReadsB * tPB["bpe"])// \
         (self.globalReadInstructionB.blockWidth * 4)
     if kernel["BufferLoad"]:
@@ -2572,8 +2546,6 @@ class KernelWriterAssembly(KernelWriter):
       tP["vgprTileOffsets"] = tP["gpr"]["tReg"]
     else:
       numTileOffsets = tP["nrt"]
-      if tP["rtc"]:
-        numTileOffsets *= tP["glvw"]
       if self.useGlobalReadTileVgpr:
         tP["vgprTileOffsets"] = self.startVgprGlobalReadTileOffsetA if tP["isA"] else self.startVgprGlobalReadTileOffsetB
         tP["numVgprTileOffsets"] = numTileOffsets # keep numTileOffsets for later use
@@ -2592,60 +2564,37 @@ class KernelWriterAssembly(KernelWriter):
         strideInterleave = True
         stride = stride * kernel["VectorWidth"] - (kernel["VectorWidth"] - 1)
 
-      if tP["rtc"]:
-        assert(numExtraPackedOffsetsPerTile == 0) # not supported here
-        # l=0, s=0
-        module.addInst("v_mov_b32", vgpr(v), \
-            vgpr(tP["gpr"]["tReg"]), "gro%s%s_%u_s%u"%(tP["tensorChar"], tP["tileChar"], 0, 0) )
-        # l=0, s>0
-        for s in range(1, tP["glvw"]):
-          module.addInst("_v_add_co_u32", vgpr(v+s), self.vcc, 1, \
-              vgpr(v+s-1), "gro%s%s_%u_s%u"%(tP["tensorChar"], tP["tileChar"], 0, s) )
-        for l in range(1, tP["nrt"]):
-          # l>0, s=0
-          strideValue = stride
-          if strideInterleave and (l & 1) != 0:
-            strideValue = 1
-          module.addInst("_v_add_co_u32", vgpr(v+l*tP["glvw"]), self.vcc, strideValue, \
-              vgpr(v+(l-1)*tP["glvw"]), \
-              "gro%s%s_%u_s%u + %s"%(tP["tensorChar"], tP["tileChar"], l, 0, strideIdx) )
-          # l>0, s>0
-          for s in range(1, tP["glvw"]):
-            module.addInst("_v_add_co_u32", vgpr(v+l*tP["glvw"]+s), self.vcc, \
-                1, vgpr(v+l*tP["glvw"]+(s-1)), \
-                "gro%s%s_%u_s%u"%(tP["tensorChar"], tP["tileChar"], l, s) )
 
-      else:
-        module.addInst("v_mov_b32", vgpr(v), \
-            vgpr(tP["gpr"]["tReg"]), "gro%s%s_%u"%(tP["tensorChar"], tP["tileChar"], 0) )
-        for l in range(1, tP["nrt"]):
-          strideValue = stride
-          if strideInterleave and (l & 1) != 0:
-            strideValue = 1
-          module.addInst("_v_add_co_u32", vgpr(v+l), self.vcc, strideValue, \
-              vgpr(v+l-1), "gro%s%s_%u += %s"%(tP["tensorChar"], tP["tileChar"], l, strideIdx) )
-        if numExtraPackedOffsetsPerTile:
-          tmpV = self.vgprPool.checkOutAligned(2,2,"packTmp", self.preventVgprOverflowDuringNewTile)
+      module.addInst("v_mov_b32", vgpr(v), \
+          vgpr(tP["gpr"]["tReg"]), "gro%s%s_%u"%(tP["tensorChar"], tP["tileChar"], 0) )
+      for l in range(1, tP["nrt"]):
+        strideValue = stride
+        if strideInterleave and (l & 1) != 0:
+          strideValue = 1
+        module.addInst("_v_add_co_u32", vgpr(v+l), self.vcc, strideValue, \
+            vgpr(v+l-1), "gro%s%s_%u += %s"%(tP["tensorChar"], tP["tileChar"], l, strideIdx) )
+      if numExtraPackedOffsetsPerTile:
+        tmpV = self.vgprPool.checkOutAligned(2,2,"packTmp", self.preventVgprOverflowDuringNewTile)
 
-          for l in range(0, tP["nrt"]):
-            lastGroVgpr = vgpr(v+l)
-            lastGroIdx = tP["PackedIndices"][0]
-            module.addSpaceLine()
-            for p in range(0, numExtraPackedOffsetsPerTile):
-              groIdx  = tP["PackedIndices"][p+1]
-              groChar = globalParameters["IndexChars"][tP["PackedIndices"][p+1]]
-              groVgpr = vgpr(tP["vgprPackedOffsets"] + l*numExtraPackedOffsetsPerTile + p)
-              pChar = globalParameters["IndexChars"][tP["PackedIndices"][p]]
-              module.addInst("V_MAGIC_DIV", \
-                  tmpV, lastGroVgpr, sgpr("MagicNumberSize%s"%pChar), \
-                  sgpr("MagicShiftSize%s"%pChar), (sgpr("MagicAbitSize%s"%pChar) if kernel["MagicDivAlg"]==2 else "0") )
-              module.addInst("v_mov_b32", groVgpr, vgpr(tmpV), "extract gro%s%s_%u (%s)"%(tc,groChar,l,groVgpr))
-              module.addInst("v_mul_lo_u32", vgpr(tmpV), groVgpr, sgpr("SizesFree+%u"%lastGroIdx), "remainder part 1")
-              module.addInst("_v_sub_u32", lastGroVgpr, lastGroVgpr, vgpr(tmpV), \
-                  "remove extracted bits from gro%s%s_%u (%s)"%(tc, globalParameters["IndexChars"][lastGroIdx], l, lastGroVgpr))
-              lastGroVgpr = groVgpr
-              lastGroIdx = groIdx
-          self.vgprPool.checkIn(tmpV)
+        for l in range(0, tP["nrt"]):
+          lastGroVgpr = vgpr(v+l)
+          lastGroIdx = tP["PackedIndices"][0]
+          module.addSpaceLine()
+          for p in range(0, numExtraPackedOffsetsPerTile):
+            groIdx  = tP["PackedIndices"][p+1]
+            groChar = globalParameters["IndexChars"][tP["PackedIndices"][p+1]]
+            groVgpr = vgpr(tP["vgprPackedOffsets"] + l*numExtraPackedOffsetsPerTile + p)
+            pChar = globalParameters["IndexChars"][tP["PackedIndices"][p]]
+            module.addInst("V_MAGIC_DIV", \
+                tmpV, lastGroVgpr, sgpr("MagicNumberSize%s"%pChar), \
+                sgpr("MagicShiftSize%s"%pChar), (sgpr("MagicAbitSize%s"%pChar) if kernel["MagicDivAlg"]==2 else "0") )
+            module.addInst("v_mov_b32", groVgpr, vgpr(tmpV), "extract gro%s%s_%u (%s)"%(tc,groChar,l,groVgpr))
+            module.addInst("v_mul_lo_u32", vgpr(tmpV), groVgpr, sgpr("SizesFree+%u"%lastGroIdx), "remainder part 1")
+            module.addInst("_v_sub_u32", lastGroVgpr, lastGroVgpr, vgpr(tmpV), \
+                "remove extracted bits from gro%s%s_%u (%s)"%(tc, globalParameters["IndexChars"][lastGroIdx], l, lastGroVgpr))
+            lastGroVgpr = groVgpr
+            lastGroIdx = groIdx
+        self.vgprPool.checkIn(tmpV)
 
       # groOffsetInMacroTile uses same register for both of these, don't free it here:
       if tP["gpr"]["lwoT"] != tP["gpr"]["tReg"] :
@@ -2663,8 +2612,6 @@ class KernelWriterAssembly(KernelWriter):
       tP["gpr"]["unrollOffsets"] = tP["gpr"]["uReg"]
     else:
       numUnrollOffsets = tP["nru"]
-      if tP["ruc"]:
-        numUnrollOffsets *= tP["glvw"]
       if self.useGlobalReadTileVgpr:
         tP["gpr"]["unrollOffsets"] = self.startVgprGlobalReadUnrollOffsetA if tP["isA"] else self.startVgprGlobalReadUnrollOffsetB
       else:
@@ -2676,42 +2623,17 @@ class KernelWriterAssembly(KernelWriter):
       totalStride = 0
       lrvwOther = self.lrvwB if tP["isA"] else self.lrvwA # The other side of lrvw
       tluOther = kernel["ProblemType"]["TLUB"] if tP["isA"] else kernel["ProblemType"]["TLUA"] # The other side of tlu
-      if tP["ruc"]:
-        # l=0, s=0
-        module.addInst("v_mov_b32", vgpr(v), \
-            vgpr(tP["gpr"]["uReg"]), "gro%s%s_%u_s%u"%(tP["tensorChar"], self.unrollChar, 0, 0) )
-        # l=0, s>0
-        for s in range(1, tP["glvw"]):
-          module.addInst("_v_add_co_u32", vgpr(v+s), self.vcc, 1, \
-              vgpr(v+s-1), "gro%s%s_%u_s%u"%(tP["tensorChar"], self.unrollChar, 0, s) )
-        for l in range(1, tP["nru"]):
-          # l>0, s=0
-          totalStride += stride
-          if  tP["tlu"] and kernel["DirectToVgpr%s"%tc] and lrvwOther == 2 and not tluOther:
-            # DirectToVgpr + LocalReadVectorWidth=2 + other side of TLU is false case, stride * 2 is added every 2. Add 1 in odd l case
-            totalStride = stride * (l - (l % 2)) + (l % 2)
-          currStride = totalStride - prevStride
-          prevStride = totalStride
-          module.addInst("_v_add_co_u32", vgpr(v+l*tP["glvw"]), self.vcc, currStride, \
-              vgpr(v+(l-1)*tP["glvw"]), \
-              "gro%s%s_%u_s%u + %s"%(tP["tensorChar"], self.unrollChar, l, 0, strideIdx) )
-          # l>0, s>0
-          for s in range(1, tP["glvw"]):
-            module.addInst("_v_add_co_u32", vgpr(v+l*tP["glvw"]+s), self.vcc, \
-                1, vgpr(v+l*tP["glvw"]+(s-1)), \
-                "gro%s%s_%u_s%u"%(tP["tensorChar"], self.unrollChar, 0, s) )
-      else:
-        module.addInst("v_mov_b32", vgpr(v), \
-            vgpr(tP["gpr"]["uReg"]), "gro%s%s_%u"%(tP["tensorChar"], self.unrollChar, 0) )
-        for l in range(1, tP["nru"]):
-          totalStride += stride
-          if tP["tlu"] and kernel["DirectToVgpr%s"%tc] and lrvwOther == 2 and not tluOther:
-            # DirectToVgpr + LocalReadVectorWidth=2 case, stride * 2 is added every 2. Add 1 in odd l case
-            totalStride = stride * (l - (l % 2)) + (l % 2)
-          currStride = totalStride - prevStride
-          prevStride = totalStride
-          module.addInst("_v_add_co_u32", vgpr(v+l), self.vcc, currStride, \
-              vgpr(v+l-1), "gro%s%s_%u + %s"%(tP["tensorChar"], self.unrollChar, l, strideIdx) )
+      module.addInst("v_mov_b32", vgpr(v), \
+          vgpr(tP["gpr"]["uReg"]), "gro%s%s_%u"%(tP["tensorChar"], self.unrollChar, 0) )
+      for l in range(1, tP["nru"]):
+        totalStride += stride
+        if tP["tlu"] and kernel["DirectToVgpr%s"%tc] and lrvwOther == 2 and not tluOther:
+          # DirectToVgpr + LocalReadVectorWidth=2 case, stride * 2 is added every 2. Add 1 in odd l case
+          totalStride = stride * (l - (l % 2)) + (l % 2)
+        currStride = totalStride - prevStride
+        prevStride = totalStride
+        module.addInst("_v_add_co_u32", vgpr(v+l), self.vcc, currStride, \
+            vgpr(v+l-1), "gro%s%s_%u + %s"%(tP["tensorChar"], self.unrollChar, l, strideIdx) )
       #self.vgprPool.checkIn(tP["gpr"]["uReg"])
     return Code.Module("graUnrollOffsets (Empty)") if self.dontAppendCode else module
 
@@ -2853,13 +2775,6 @@ class KernelWriterAssembly(KernelWriter):
     tVS = 0
     uVW = 1
     uVS = 0
-    if tP["rtc"]:
-      tVW = tP["glvw"]
-      tVS = 1
-    elif tP["ruc"]:
-      uVW = tP["glvw"]
-      uVS = 1
-
     # single loop start
 
     # vgpr assignments
@@ -6019,9 +5934,7 @@ class KernelWriterAssembly(KernelWriter):
         para, tP["lsc"] )
     if not tP["tlu"]:
       comment += "*(MT%s+PAD)" % (tP["tileChar"])
-    comment += " + (%s%d*%s)" % (
-        (("%u + "%sPerp) if tP["wuc"] else ""), perp, \
-        tP["lsp"])
+    comment += " + (%d*%s)" % (perp, tP["lsp"])
     if tP["tlu"]:
       comment += "(*MT%s+PAD)" % (tP["tileChar"])
     comment += " = %u" % (offsetBytes)
@@ -6152,7 +6065,6 @@ class KernelWriterAssembly(KernelWriter):
         print("lsc", kernel[tP["lsc"]])
         print("lsp", kernel[tP["lsp"]])
         print("wtc", tP["wtc"])
-        print("wuc", tP["wuc"])
         print("nrc", tP["nrc"])
         print("nrp", tP["nrp"])
         print("nwcv", tP["nwcv"])
@@ -6183,13 +6095,9 @@ class KernelWriterAssembly(KernelWriter):
             if tP["tlu"] != kernel["UnrollMajorLDS%s" % tP["tensorChar"]]:
               if tP["wtc"]:
                 sPerp = s
-              elif tP["wuc"]:
-                sPara = s
             else:
               if tP["wtc"]:
                 sPara = s
-              elif tP["wuc"]:
-                sPerp = s
 
             #print("perp:{}/{} para:{}/{} sPerp:{} sPara:{} loopCnt:{}".format(perp,tP["nrp"],para,tP["nrc"],sPerp,sPara,loopCnt))
             (offset, i, comment) = self.calculateLdsWriteOffset(perp, para, sPerp, sPara, kernel, tP, loopCnt)
@@ -9157,10 +9065,8 @@ class KernelWriterAssembly(KernelWriter):
 
     vmcnt = 0 if skipGlobalRead > -1 else -1
     if skipGlobalRead > -1:
-      numA = kernel["NumLoadsPerpendicularA"] * kernel["NumLoadsCoalescedA"] \
-          * self.numReadVectorComponentsA
-      numB = kernel["NumLoadsPerpendicularB"] * kernel["NumLoadsCoalescedB"] \
-          * self.numReadVectorComponentsB
+      numA = kernel["NumLoadsPerpendicularA"] * kernel["NumLoadsCoalescedA"]
+      numB = kernel["NumLoadsPerpendicularB"] * kernel["NumLoadsCoalescedB"]
       vmcnt += skipGlobalRead * (numA + numB)
 
       # Unlike flat loads, BufferLoad do not increment the outstanding

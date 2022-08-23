@@ -370,7 +370,7 @@ class AddrCalculation:
         #   For MFMA shift pointer, correct data is stored in another thread.
         #   Therefore, MFMA cannot use v_mov to amend store data
         #   It needs to modify the coord1 of thread directly.
-        if (not kernel["SourceSwap"]) and (not kernel["GuaranteeNoPartialB"]) and kw.readTileDimVectorB and kernel["EnableMatrixInstruction"] and edge:
+        if (not kernel["SourceSwap"]) and (not kernel["GuaranteeNoPartialB"]) and kw.tPB["rtv"] and kernel["EnableMatrixInstruction"] and edge:
             (d1,d0,vc1,vc0) = self.element
             if (d1 == vc1 == d0 == vc0 == 0) or self.newCoord1:
                 sgprCnt = self.kernelWriter.laneSGPRCount

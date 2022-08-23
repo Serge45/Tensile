@@ -32,6 +32,7 @@ import abc
 import os
 import subprocess
 import copy
+from typing import NamedTuple
 
 ################################################################################
 # Kernel Writer
@@ -2068,12 +2069,12 @@ class KernelWriter(metaclass=abc.ABCMeta):
       # don't need the unshift code
 
       # shift vector components d0
-      if not kernel["GuaranteeNoPartialA"] and self.readTileDimVectorA:
+      if not kernel["GuaranteeNoPartialA"] and tensorParametersA["rtv"]:
         module.addComment1("shift vector components d0")
         module.addCode(self.shiftVectorComponents(kernel, tensorParametersA))
 
       # shift vector components d1, for MFMA version, B never entered this
-      if not kernel["GuaranteeNoPartialB"] and self.readTileDimVectorB:
+      if not kernel["GuaranteeNoPartialB"] and tensorParametersB["rtv"]:
         module.addComment1("shift vector components d1")
         module.addCode(self.shiftVectorComponents(kernel, tensorParametersB))
 
@@ -2219,14 +2220,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
     # new intermediate parameters
     numReadsTile # nrt
     numReadsUnroll # nru
-    numReadsTileVecComp # nrvt
-    numReadsUnrollVecComp # nrvu
     numWritesCoal # nwc
     numWritesPerp # nwp
     numWritesCoalVecComp # nwvc
     numWritesPerpVecComp # nwvp
-    readTileComponents (based on grcv)
-    readTileVector
     """
 
     # TODO load sub-vector
@@ -2300,178 +2297,58 @@ class KernelWriter(metaclass=abc.ABCMeta):
       self.numMfmaPerIter = kernel["MIWaveTile"][0] * kernel["MIWaveTile"][1] * kernel["InnerUnroll"]
       if kernel["ProblemType"]["DataType"].isComplex(): self.numMfmaPerIter *= 4
 
-    ########################################
-    # read vectors or vector components
-    ########################################
-    if kernel["ProblemType"]["TLUA"]: # NT no transpose
-      self.numReadsTileA = kernel["NumLoadsCoalescedA"]
-      self.numReadsUnrollA = kernel["NumLoadsPerpendicularA"]
-      self.readTileDimComponentsA = False # Vector
-      self.readTileDimVectorA = True # Vector
-      self.readUnrollDimComponentsA = False # Scalar
-      self.readUnrollDimVectorA = False # Scalar
-      self.numReadsTileVecCompA = vwa
-      self.numReadsUnrollVecCompA = 1
-    else: # TN yes transpose
-      self.numReadsTileA = kernel["NumLoadsPerpendicularA"]
-      self.numReadsUnrollA = kernel["NumLoadsCoalescedA"]
-      self.readTileDimComponentsA = False # Scalar
-      self.readTileDimVectorA = False # Scalar
-      self.readUnrollDimComponentsA = False # Vector
-      self.readUnrollDimVectorA = True # Vector
-      self.numReadsUnrollVecCompA = vwa
-      self.numReadsTileVecCompA = 1
+    # NamedTuple is immutable
+    class intermediateTPValues(NamedTuple):
+      numReadsTile: int = -1
+      numReadsUnroll: int = -1
+      readTileDimVector: bool = False
+      writeTileDimComponents: bool = False
+      numWritesCoalVecComp: int = -1
+      numWritesPerpVecComp: int = -1
+      # convert tile/unroll to para/perp
+      numReadsCoalVecComp: int = -1
+      numReadsPerpVecComp: int = -1
 
-    ########################################
-    # write vectors or vector components
-    ########################################
-    if kernel["ProblemType"]["TLUA"] != kernel["UnrollMajorLDSA"]: # NT no transpose
-      self.numWritesCoalA = kernel["NumLoadsCoalescedA"]
-      self.writeUnrollDimComponentsA = False # Scalar
-      self.writeTileDimComponentsA = False # Vector
-      writeCoal = True
-    else: # TN yes transpose
-      self.numWritesCoalA = kernel["NumLoadsPerpendicularA"]
-      self.writeUnrollDimComponentsA = False # Scalar
-      self.writeTileDimComponentsA = kernel["GlobalReadVectorWidth"] > 1 # Components
-      writeCoal = False
+    def readWriteVectors(mat, vw, kernel):
+      ########################################
+      # read vectors or vector components
+      ########################################
+      # Two dim: tile and unroll
+      if kernel["ProblemType"]["TLU%s"%mat]: # NT no transpose
+        numReadsTile = kernel["NumLoadsCoalesced%s"%mat]
+        numReadsUnroll = kernel["NumLoadsPerpendicular%s"%mat]
+        readTileDimVector = True # Vector
+      else: # TN yes transpose
+        numReadsTile = kernel["NumLoadsPerpendicular%s"%mat]
+        numReadsUnroll = kernel["NumLoadsCoalesced%s"%mat]
+        readTileDimVector = False # Scalar
 
-    # writeCoal indicates writes should be done in the coal dim
-    # else in perp
-    if writeCoal:
-      self.numWritesCoalVecCompA = vwa // kernel["DepthULdsDivisor"]
-      self.numWritesPerpVecCompA = 1
-    else:
-      self.numWritesCoalVecCompA = 1
-      self.numWritesPerpVecCompA = vwa
-    del writeCoal
+      numReadsCoalVecComp   = vw
+      numReadsPerpVecComp   = 1
 
-    self.numReadVectorComponentsA = kernel["GlobalLoadVectorWidthA"] \
-        if (self.readTileDimComponentsA \
-        or self.readUnrollDimComponentsA) else 1
-    # self.numWriteVectorComponentsA = kernel["GlobalLoadVectorWidthA"] \
-    #     if (self.writeTileDimComponentsA \
-    #     or self.writeUnrollDimComponentsA) else 1
-    # self.numReadTileVectorComponentsA = kernel["GlobalLoadVectorWidthA"] \
-    #     if self.readTileDimComponentsA else 1 # for branches
-    # convert tile/unroll to para/perp
-    if kernel["ProblemType"]["TLUA"]:
-      self.numReadsCoalVecCompA = self.numReadsTileVecCompA
-      self.numReadsPerpVecCompA = self.numReadsUnrollVecCompA
-      # for asm
-      self.readCoalescedComponentsA  = self.readTileDimComponentsA
-      # self.readCoalescedVectorA      = self.readTileDimVectorA  # Not Used
-      self.readPerpendicularComponentsA  = self.readUnrollDimComponentsA
-      # self.readPerpendicularVectorA      = self.readUnrollDimVectorA  # Not Used
-    else:
-      self.numReadsCoalVecCompA = self.numReadsUnrollVecCompA
-      self.numReadsPerpVecCompA = self.numReadsTileVecCompA
-      # for asm
-      self.readCoalescedComponentsA  = self.readUnrollDimComponentsA
-      # self.readCoalescedVectorA      = self.readUnrollDimVectorA  # Not Used
-      self.readPerpendicularComponentsA  = self.readTileDimComponentsA
-      # self.readPerpendicularVectorA      = self.readTileDimVectorA  # Not Used
+      ########################################
+      # write vectors or vector components
+      ########################################
+      if kernel["ProblemType"]["TLU%s"%mat] != kernel["UnrollMajorLDS%s"%mat]: # NT no transpose
+        writeTileDimComponents = False # Vector
+        # writeCoal indicates writes should be done in the coal dim or else perp
+        numWritesCoalVecComp = vw // kernel["DepthULdsDivisor"]
+        numWritesPerpVecComp = 1
+      else: # TN yes transpose
+        writeTileDimComponents = kernel["GlobalReadVectorWidth"] > 1 # Components
+        numWritesCoalVecComp = 1
+        numWritesPerpVecComp = vw
 
-    ####################################
-    # read vectors or vector components b
-    ####################################
-    if kernel["ProblemType"]["TLUB"]: # NT no transpose
-      self.numReadsTileB = kernel["NumLoadsCoalescedB"]
-      self.numReadsUnrollB = kernel["NumLoadsPerpendicularB"]
-      self.readTileDimComponentsB = False # Vector
-      self.readTileDimVectorB = True # Vector
-      self.readUnrollDimComponentsB = False # Scalar
-      self.readUnrollDimVectorB = False # Scalar
-      self.numReadsTileVecCompB = vwb
-      self.numReadsUnrollVecCompB = 1
-    else: # TN yes transpose
-      self.numReadsTileB = kernel["NumLoadsPerpendicularB"]
-      self.numReadsUnrollB = kernel["NumLoadsCoalescedB"]
-      self.readTileDimComponentsB = False # Scalar
-      self.readTileDimVectorB = False # Scalar
-      self.readUnrollDimComponentsB = False # Vector
-      self.readUnrollDimVectorB = True # Vector
-      self.numReadsUnrollVecCompB = vwb
-      self.numReadsTileVecCompB = 1
+      return intermediateTPValues(numReadsTile, numReadsUnroll, readTileDimVector, \
+        writeTileDimComponents, numWritesCoalVecComp, numWritesPerpVecComp, \
+        numReadsCoalVecComp, numReadsPerpVecComp)
 
-    ####################################
-    # write vectors or vector components b
-    ####################################
-    if kernel["ProblemType"]["TLUB"] != kernel["UnrollMajorLDSB"]: # NT no transpose
-      self.numWritesCoalB = kernel["NumLoadsCoalescedB"]
-      self.writeUnrollDimComponentsB = False # Vector
-      self.writeTileDimComponentsB = False # Vector
-      writeCoal = True
-    else: # TN yes transpose
-      self.numWritesCoalB = kernel["NumLoadsPerpendicularB"]
-      self.writeUnrollDimComponentsB = False
-      self.writeTileDimComponentsB = kernel["GlobalReadVectorWidth"] > 1 # Components
-      writeCoal = False
+    itP = dict()
+    itP["A"] = readWriteVectors("A", vwa, kernel)
+    itP["B"] = readWriteVectors("B", vwb, kernel)
 
-    # writeCoal indicates writes should be done in the coal dim
-    # else in perp
-    if writeCoal:
-      self.numWritesCoalVecCompB = vwb // kernel["DepthULdsDivisor"]
-      self.numWritesPerpVecCompB = 1
-    else:
-      self.numWritesCoalVecCompB = 1
-      self.numWritesPerpVecCompB = vwb
-    del writeCoal
-
-    # numReadVectorComponentsB is refers to global reads
-    self.numReadVectorComponentsB = kernel["GlobalLoadVectorWidthB"] \
-        if (self.readTileDimComponentsB \
-        or self.readUnrollDimComponentsB) else 1
-    # self.numWriteVectorComponentsB = kernel["GlobalLoadVectorWidthB"] \
-    #     if (self.writeTileDimComponentsB \
-    #     or self.writeUnrollDimComponentsB) else 1
-    # self.numReadTileVectorComponentsB = kernel["GlobalLoadVectorWidthB"] \
-    #     if self.readTileDimComponentsB else 1 # for branches
-    # convert tile/unroll to para/perp
-    if kernel["ProblemType"]["TLUB"]:
-      self.numReadsCoalVecCompB = self.numReadsTileVecCompB
-      self.numReadsPerpVecCompB = self.numReadsUnrollVecCompB
-      # for asm
-      self.readCoalescedComponentsB  = self.readTileDimComponentsB
-      # self.readCoalescedVectorB      = self.readTileDimVectorB  # Not Used
-      self.readPerpendicularComponentsB  = self.readUnrollDimComponentsB
-      # self.readPerpendicularVectorB      = self.readUnrollDimVectorB  # Not Used
-    else:
-      self.numReadsCoalVecCompB = self.numReadsUnrollVecCompB
-      self.numReadsPerpVecCompB = self.numReadsTileVecCompB
-      # for asm
-      self.readCoalescedComponentsB  = self.readUnrollDimComponentsB
-      # self.readCoalescedVectorB      = self.readUnrollDimVectorB  # Not Used
-      self.readPerpendicularComponentsB  = self.readTileDimComponentsB
-      # self.readPerpendicularVectorB      = self.readTileDimVectorB  # Not Used
-
-    ####################################
-    # load sizes
-    """
-    if kernel["ProblemType"]["TLUA"]:
-      kernel["LSCA"] = kernel["MacroTileA"] \
-          / kernel["NumLoadsCoalescedA"]
-      kernel["LSPA"] = kernel["DepthU"] / kernel["NumLoadsPerpendicularA"]
-    else:
-      kernel["LSCA"] = kernel["DepthU"] / kernel["NumLoadsCoalescedA"]
-      kernel["LSPA"] = kernel["MacroTileA"] \
-          / kernel["NumLoadsPerpendicularA"]
-    if kernel["ProblemType"]["TLUB"]:
-      kernel["LSCB"] = kernel["MacroTileB"] \
-          / kernel["NumLoadsCoalescedB"]
-      kernel["LSPB"] = kernel["DepthU"] / kernel["NumLoadsPerpendicularB"]
-    else:
-      kernel["LSCB"] = kernel["DepthU"] / kernel["NumLoadsCoalescedB"]
-      kernel["LSPB"] = kernel["MacroTileB"] \
-          / kernel["NumLoadsPerpendicularB"]
-    kernel["LVCA"] = kernel["LSCA"] / kernel["GlobalLoadVectorWidthA"]
-    kernel["LVCB"] = kernel["LSCB"] / kernel["GlobalLoadVectorWidthB"]
-    kernel["LVPA"] = kernel["LSPA"] / kernel["GlobalLoadVectorWidthA"]
-    kernel["LVPB"] = kernel["LSPB"] / kernel["GlobalLoadVectorWidthB"]
-    """
-
-    self.getTensorParameters(tensorParametersA, kernel, True)
-    self.getTensorParameters(tensorParametersB, kernel, False)
+    self.getTensorParameters(tensorParametersA, kernel, itP, True)
+    self.getTensorParameters(tensorParametersB, kernel, itP, False)
 
     tensorParametersA["PackedIndices"] = kernel["PackedC%uIndicesX"%self.tPA["tile01Idx"]]
     tensorParametersB["PackedIndices"] = kernel["PackedC%uIndicesX"%self.tPB["tile01Idx"]]
@@ -2531,112 +2408,45 @@ class KernelWriter(metaclass=abc.ABCMeta):
   ##############################################################################
   # Get Params For Tensor A/B
   ##############################################################################
-  def getTensorParameters(self, tP, kernel, tA):
+  def getTensorParameters(self, tP, kernel, itP, tA):
+    cM = "A" if tA else "B"
     tP["mirror"] = bool(kernel["ProblemType"]["MirrorDims%s" % ("A" if tA else "B")])
     if tA: # A
-      tP["isA"] = True                                      # is this tensor A
-      tP["isB"] = False                                     # is this tensor B
-      tP["bpe"] = int(4*kernel["ProblemType"]["DataType"].numRegisters())
-      tP["tensorChar"] = "A"                                # tensor character A/B
       tP["tensorIdx"] = 0                                   # tensor index A=0, B=1
       tP["tileChar"] = self.tileCharA                       # tile char I0 or J1
-      tP["tileIdx"] = kernel["ProblemType"]["Index01A"]     # is the tile dimension of A the 0th or 1th index, i.e. Aki, tileIdx=0
-      tP["tile01Idx"] = 1 if tP["tileIdx"] else 0
-      tP["lsc"] = "LSCA"                                    # load size coalesced A, number of elements that get loaded along coalesced dimension with each load
-      tP["lsp"] = "LSPA"                                    # load size perpendicular A, number of elements that get loaded along non-coalesced dimension with each load
-      tP["lvc"] = "LVCA"                                    # "load size" in terms of number of short-vectors and not elements
-      tP["lvp"] = "LVPA"                                    # "load size" in terms of number of short-vectors and not elements
-      tP["rtv"] = self.readTileDimVectorA                   # bool in the tile dimension, reads will read vectors
-      tP["rtc"] = self.readTileDimComponentsA               # bool in the tile dimension, reads will read vector components
-      #tP["ruv"] = self.readUnrollDimVectorA
-      #tP["nlvc"] = self.numReadVectorComponentsA
-      #tP["nwvc"] = self.numWriteVectorComponentsA
-      tP["wg"] = "WorkGroup%u" % (tP["tile01Idx"])# these are storing the actual strong to lookup the number from kernel dictionary
-      tP["prevWg"] = "PrevWorkGroup0"                       # used for prefetch-across-persistent #NHWC TO-do
-      tP["sg"] = "SubGroup%u" % (tP["tile01Idx"])
-      tP["tt"] = "ThreadTile%u" % (tP["tile01Idx"])
-      tP["mt"] = "MacroTile%u" % (tP["tile01Idx"])
-      tP["tlu"] = kernel["ProblemType"]["TLUA"]             # thread stride is less than unroll stride, i.e., not transposing matrix
-      tP["ia"] = kernel["ProblemType"]["IndexAssignmentsA"] # array of index assignments
-      #tP["nlc"] = kernel["NumLoadsCoalescedA"]
-      #tP["nlp"] = kernel["NumLoadsPerpendicularA"]
-      #tP["nlcv"] = self.numReadsCoalVecCompA
-      tP["nlpv"] = self.numReadsPerpVecCompA                # num vector components perpendicular to coalesced; =1 or VW
-      # NEW
-      tP["nrt"] = self.numReadsTileA                        # number of reads along tile dimension
-      tP["nrtv"] = self.numReadsTileVecCompA                # number of vector components along tile dimension; =1 or VW
-      tP["nru"] = self.numReadsUnrollA                      # number of reads along unroll dimension
-      tP["nruv"] = self.numReadsUnrollVecCompA              # number of vector components along unroll dimension; =1 or VW
-      tP["nrc"] = kernel["NumLoadsCoalescedA"]              # number of reads along coalesced dimension
-      tP["nrcv"] = self.numReadsCoalVecCompA                # number of vector components along coalesced dimension
-      tP["nrp"] = kernel["NumLoadsPerpendicularA"]          # number of reads along perpendicular dimension
-      tP["nrpv"] = self.numReadsPerpVecCompA                # number of vector components along perpendicular dimension
-      tP["nwcv"] = self.numWritesCoalVecCompA               # number of vector component writes along coalesced dimension
-      tP["nwpv"] = self.numWritesPerpVecCompA               # number of vector component writes along perpendicular dimension
-      tP["glvw"] = kernel["GlobalLoadVectorWidthA"]
-      # asm
-      tP["rcc"] = self.readCoalescedComponentsA             # read vector components along coalesced dimensions
-      # tP["rcv"] = self.readCoalescedVectorA                 # read vector along coalesced dimension
-      tP["rpc"] = self.readPerpendicularComponentsA         # read vector components along perpendicular dimension
-      # tP["rpv"] = self.readPerpendicularVectorA             # read vector along perpendicular dimension
-      tP["ruc"] = self.readUnrollDimComponentsA             # read vector components along unroll dimension
-      tP["wtc"] = self.writeTileDimComponentsA              # write vector components along tile dimension
-      tP["wuc"] = self.writeUnrollDimComponentsA            # write vector components along unroll dimension
-      tP["idx"] = kernel["ProblemType"]["Index0"]           # index 0 is tile dimension belonging to A. Note 'idx' may not be in tP['ia'].
-      tP["rc"] = kernel["ProblemType"]["IndexAssignmentsA"][0] \
-          in [kernel["ProblemType"]["Index01A"], \
-          kernel["ProblemType"]["IndexUnroll"]]             # can read coalesced
-      tP["NonTemporal"] = kernel["NonTemporalA"]            # non-temporal read type
     else: # B
-      tP["isA"] = False
-      tP["isB"] = True
-      tP["bpe"] = int(4*kernel["ProblemType"]["DataType"].numRegisters())
-      tP["tensorChar"] = "B"
       tP["tensorIdx"] = 1
       tP["tileChar"] = self.tileCharB
-      tP["tileIdx"] = kernel["ProblemType"]["Index01B"]
-      tP["tile01Idx"] = 1 if tP["tileIdx"] else 0
-      tP["lsc"] = "LSCB"
-      tP["lsp"] = "LSPB"
-      tP["lvc"] = "LVCB"
-      tP["lvp"] = "LVPB"
-      tP["rtv"] = self.readTileDimVectorB
-      tP["rtc"] = self.readTileDimComponentsB
-      #tP["ruv"] = self.readUnrollDimVectorB
-      #tP["nlvc"] = self.numReadVectorComponentsB
-      #tP["nwvc"] = self.numWriteVectorComponentsB
-      tP["wg"] = "WorkGroup%u" % (tP["tile01Idx"])
-      tP["prevWg"] = "PrevWorkGroup1"
-      tP["sg"] = "SubGroup%u" % (tP["tile01Idx"])
-      tP["tt"] = "ThreadTile%u" % (tP["tile01Idx"])
-      tP["mt"] = "MacroTile%u" % (tP["tile01Idx"])
-      tP["tlu"] = kernel["ProblemType"]["TLUB"]
-      tP["ia"] = kernel["ProblemType"]["IndexAssignmentsB"]
-      # NEW
-      tP["nrt"] = self.numReadsTileB
-      tP["nrtv"] = self.numReadsTileVecCompB
-      tP["nru"] = self.numReadsUnrollB
-      tP["nruv"] = self.numReadsUnrollVecCompB
-      tP["nrc"] = kernel["NumLoadsCoalescedB"]
-      tP["nrcv"] = self.numReadsCoalVecCompB
-      tP["nrp"] = kernel["NumLoadsPerpendicularB"]
-      tP["nrpv"] = self.numReadsPerpVecCompB
-      tP["nwcv"] = self.numWritesCoalVecCompB
-      tP["nwpv"] = self.numWritesPerpVecCompB
-      tP["glvw"] = kernel["GlobalLoadVectorWidthB"]
-      # asm
-      tP["rcc"] = self.readCoalescedComponentsB
-      # tP["rcv"] = self.readCoalescedVectorB
-      tP["rpc"] = self.readPerpendicularComponentsB
-      # tP["rpv"] = self.readPerpendicularVectorB
-      tP["ruc"] = self.readUnrollDimComponentsB
-      tP["wtc"] = self.writeTileDimComponentsB
-      tP["wuc"] = self.writeUnrollDimComponentsB
-      tP["idx"] = kernel["ProblemType"]["Index1"]
-      tP["rc"] = kernel["ProblemType"]["IndexAssignmentsB"][0] \
-          in [kernel["ProblemType"]["Index01B"], \
-          kernel["ProblemType"]["IndexUnroll"]] # can read coalesced
-      tP["NonTemporal"] = kernel["NonTemporalB"]
+
+    tP["isA"] = tA                                               # is this tensor A
+    tP["isB"] = (not tA)                                         # is this tensor B
+    tP["bpe"] = int(4*kernel["ProblemType"]["DataType"].numRegisters())
+    tP["tensorChar"] = cM                                        # tensor character A/B
+    tP["tileIdx"] = kernel["ProblemType"]["Index01%s"%cM]        # is the tile dimension of A the 0th or 1th index, i.e. Aki, tileIdx=0
+    tP["tile01Idx"] = 1 if tP["tileIdx"] else 0
+    tP["lsc"] = "LSC%s"%cM                                       # load size coalesced A/B, number of elements that get loaded along coalesced dimension with each load
+    tP["lsp"] = "LSP%s"%cM                                       # load size perpendicular A/B, number of elements that get loaded along non-coalesced dimension with each load
+    tP["lvc"] = "LVC%s"%cM                                       # "load size" in terms of number of short-vectors and not elements
+    tP["lvp"] = "LVP%s"%cM                                       # "load size" in terms of number of short-vectors and not elements
+    tP["rtv"] = itP[cM].readTileDimVector                        # bool in the tile dimension, reads will read vectors
+    tP["wg"] = "WorkGroup%u" % (tP["tile01Idx"])                 # these are storing the actual strong to lookup the number from kernel dictionary
+    tP["sg"] = "SubGroup%u" % (tP["tile01Idx"])
+    tP["tt"] = "ThreadTile%u" % (tP["tile01Idx"])
+    tP["mt"] = "MacroTile%u" % (tP["tile01Idx"])
+    tP["tlu"] = kernel["ProblemType"]["TLU%s"%cM]                # thread stride is less than unroll stride, i.e., not transposing matrix
+    tP["ia"] = kernel["ProblemType"]["IndexAssignments%s"%cM]    # array of index assignments
+    tP["nrt"] = itP[cM].numReadsTile                             # number of reads along tile dimension
+    tP["nru"] = itP[cM].numReadsUnroll                           # number of reads along unroll dimension
+    tP["nrc"] = kernel["NumLoadsCoalesced%s"%cM]                 # number of reads along coalesced dimension
+    tP["nrcv"] = itP[cM].numReadsCoalVecComp                     # number of vector components along coalesced dimension
+    tP["nrp"] = kernel["NumLoadsPerpendicular%s"%cM]             # number of reads along perpendicular dimension
+    tP["nrpv"] = itP[cM].numReadsPerpVecComp                     # number of vector components along perpendicular dimension
+    tP["nwcv"] = itP[cM].numWritesCoalVecComp                    # number of vector component writes along coalesced dimension
+    tP["nwpv"] = itP[cM].numWritesPerpVecComp                    # number of vector component writes along perpendicular dimension
+    tP["glvw"] = kernel["GlobalLoadVectorWidth%s"%cM]
+    tP["wtc"] = itP[cM].writeTileDimComponents                   # write vector components along tile dimension
+    tP["idx"] = kernel["ProblemType"]["Index%d"%tP["tensorIdx"]] # index 0 is tile dimension belonging to A. Note 'idx' may not be in tP['ia'].
+    tP["NonTemporal"] = kernel["NonTemporal%s"%cM]               # non-temporal read type
 
   ##############################################################################
   # Global Read Addresses: Tile Assignment A/B
@@ -3398,8 +3208,8 @@ for codeObjectFileName in codeObjectFileNames:
     # generate wait only if BufferLoad is True (this logic does not work with FlatLoad)
     if (kernel["DirectToVgprA"] or kernel["DirectToVgprB"]) and kernel["BufferLoad"]:
       pgr2 = kernel["PrefetchGlobalRead"] == 2
-      numGlobalReadA = kernel["NumLoadsPerpendicularA"] * kernel["NumLoadsCoalescedA"] * self.numReadVectorComponentsA
-      numGlobalReadB = kernel["NumLoadsPerpendicularB"] * kernel["NumLoadsCoalescedB"] * self.numReadVectorComponentsB
+      numGlobalReadA = kernel["NumLoadsPerpendicularA"] * kernel["NumLoadsCoalescedA"]
+      numGlobalReadB = kernel["NumLoadsPerpendicularB"] * kernel["NumLoadsCoalescedB"]
       numGlobalRead = numGlobalReadA if kernel["DirectToVgprA"] else numGlobalReadB
       numGlobalReadAll = numGlobalReadA + numGlobalReadB
       numGlobalStoreC = 0
