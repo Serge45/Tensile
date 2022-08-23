@@ -2328,7 +2328,7 @@ class KernelWriterAssembly(KernelWriter):
     module = Code.Module("graWorkGroup")
     module.addComment0("graWorkGroup mapping")
     if kernel["GlobalSplitU"] > 1:
-      module.addComment("// GSU-not-WGMapRR :nwg1 = (size%s + MT%s - 1) / MT%s;" \
+      module.addComment("GSU-not-WGMapRR :nwg1 = (size%s + MT%s - 1) / MT%s;" \
           % (self.tileChar1, self.tileChar1, self.tileChar1))
 
       # gsuSumIdx = wg1 % GSU
@@ -2338,20 +2338,8 @@ class KernelWriterAssembly(KernelWriter):
       module.addInst("s_mov_b32", sgpr(divisor), sgpr("WorkGroup1"), \
           "copying for divisor")
 
-      #tmp = self.vgprPool.checkOut(1)
-
-      #module.addInst("v_mov_b32", vgpr(tmp), sgpr("WorkGroup1"), "wg1")
-      #module.addCode(dump(vgpr(tmp))) # numerator
-
       module.addCode(scalarStaticDivideAndRemainder("WorkGroup1", "GSUSumIdx", \
           divisor, kernel["GlobalSplitU"], tmpSgpr, 1))
-
-      #module.addInst("v_mov_b32", vgpr(tmp), sgpr("WorkGroup1"), "wg1")
-      #module.addCode(dump(vgpr(tmp))) # quotient
-      #module.addInst("v_mov_b32", vgpr(tmp), sgpr("GSUSumIdx"), "gsusumidx")
-      #module.addCode(dump(vgpr(tmp))) # remainder
-      #self.vgprPool.checkIn(tmp)
-      #module.addInst("s_endpgm", "")
 
     ########################################
     # Blocked rows or columns
@@ -2383,26 +2371,18 @@ class KernelWriterAssembly(KernelWriter):
       module.addInst("s_cmov_b32", sgpr(wgmDivisorMagicNumber), sgpr("MagicNumberWgmRemainder1"),  "")
       module.addInst("s_cselect_b32", sgpr(wgmDivisor), sgpr("WgmRemainder1"), absWgm,  "")
 
-      if kernel["WorkGroupMapping"]>=0 :
-        firstWg = "WorkGroup0"
-        secondWg = "WorkGroup1"
-      else:
-        firstWg = "WorkGroup1"
-        secondWg = "WorkGroup0"
-
-      assert(self.sgprs[firstWg] & 0x1 == 0) # must be even and ...
-      assert(self.sgprs[firstWg]+1 == self.sgprs[secondWg] ) # must be consecutive (for magic div below)
-      module.addCode(self.sMagicDivWrapper(dest=self.sgprs[firstWg], dividend=sgpr(wgSerial2), \
+      # No longer supported for kernel["WorkGroupMapping"] < 0
+      assert(self.sgprs["WorkGroup0"] & 0x1 == 0) # must be even and ...
+      assert(self.sgprs["WorkGroup0"]+1 == self.sgprs["WorkGroup1"] ) # must be consecutive (for magic div below)
+      module.addCode(self.sMagicDivWrapper(dest=self.sgprs["WorkGroup0"], dividend=sgpr(wgSerial2), \
           magicNumber=sgpr(wgmDivisorMagicNumber), magicShift=smallNumMagicShift))
-      if kernel["WorkGroupMapping"]<0 :
-        module.addInst("s_mov_b32", sgpr("WorkGroup0"), sgpr(firstWg), "")
       module.addInst("s_mul_i32", sgpr("WorkGroup1"), sgpr("WorkGroup0"), sgpr(wgmDivisor), "quotient * non-magic divisor")
       module.addInst("s_sub_u32", sgpr("WorkGroup1"), sgpr(wgSerial2), sgpr("WorkGroup1"), "WorkGroup1=remainder")
 
       module.addInst("s_mul_i32", sgpr(blockId2), sgpr(blockId2), \
           abs(kernel["WorkGroupMapping"]), "blockId * WGM")
 
-      module.addInst("s_add_u32", sgpr(secondWg), sgpr(secondWg), \
+      module.addInst("s_add_u32", sgpr("WorkGroup1"), sgpr("WorkGroup1"), \
           sgpr(blockId2), "wg1 += blockId * WGM")
 
     return module
