@@ -9939,7 +9939,7 @@ class GlobalWriteBatchWriter:
 
       for avi in range(0, self.gwvw // self.atomicW):
         sumIdxV = self.ss.elementSumIdx[elementIdx] + avi
-        if self.do["GlobalWrite"]:
+        if self.parentWriter.do["GlobalWrite"]:
           if self.kernel["BufferStore"]:
             module.addInst("buffer_atomic_add_f32", \
                             vgpr("ValuC+%u"%sumIdxV), \
@@ -10125,7 +10125,7 @@ class GlobalWriteBatchWriter:
         module.addCode(self.parentWriter.chooseAddForAtomic(self.kernel, \
                         vgpr(dataV+0,vgprCnt), vgpr(dataV+1*vgprIdx,vgprCnt), vgpr("ValuC+%u"%sumIdxV,vgprCnt), \
                         "newC = rC + originalC"))
-        if self.do["GlobalWrite"]:
+        if self.parentWriter.do["GlobalWrite"]:
           if self.kernel["BufferStore"]:
             # Using no-ret version here?
             # cmpswap_x2 for DGEMM
