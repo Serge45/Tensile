@@ -7888,44 +7888,6 @@ class KernelWriterAssembly(KernelWriter):
     return module
 
   ##############################################################################
-  # choose the ADD instruction for combining external C with internal C
-  # used in atomic=1 case to compute expected external data
-  ##############################################################################
-  def chooseAddForAtomic(self, kernel, dst, src0, src1, comment):
-    module = Code.Module("chooseAddForAtomic")
-    if kernel["ProblemType"]["DataType"].isBFloat16():
-      if kernel["_GlobalAccumulation"]:
-        module.addInst("v_add_f32", dst, src0, src1, comment)
-    elif kernel["ProblemType"]["DataType"].isHalf():
-      if kernel["_GlobalAccumulation"]:
-        module.addInst("v_add_f32", dst, src0, src1, comment)
-      elif kernel["ProblemType"]["HighPrecisionAccumulate"]:
-        module.addInst("v_mad_mix need madmix bozo", \
-                       dst, src0, src1, \
-                       comment)
-      else:
-        module.addInst("v_pk_add_f16", \
-                       dst, src0, src1, \
-                       comment)
-    elif kernel["ProblemType"]["DataType"].isInt8x4() or kernel["ProblemType"]["DataType"].isInt8():
-      # assume v_add_i32 can be used in place of v_add_f32
-      # need to add saturation directive to v_add_i32 instruction to clamp integer arithmetic
-      module.addInst("_v_add_i32", \
-                     dst, src0, src1, \
-                     comment)
-    elif kernel["ProblemType"]["DataType"].isSingle():
-      module.addInst("v_add_f32", \
-                     dst, src0, src1, \
-                     comment)
-    else:
-       #support for double
-      module.addInst("v_add_f64", \
-                     dst, src0, src1, \
-                     comment)
-
-    return module
-
-  ##############################################################################
   def applyAlpha(self, kernel, gwvw, elementSumIdx, elementIdx, tmpS01):
     module = Code.Module("applyAlpha")
 

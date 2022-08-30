@@ -5,7 +5,6 @@ from ..Component import Component
 from ..SolutionStructs import Solution
 from ..Activation import ActivationModule, ActivationType
 from ..AsmStoreState import StoreState
-#from ..KernelWriterAssembly import KernelWriterAssembly
 from ..AsmUtils import vgpr, sgpr, replaceHolder, SaturateCastType
 from ..AsmAddressCalculation import AddrCalculation
 
@@ -87,6 +86,44 @@ class GlobalWriteBatchWriter(Component):
     self._prolog(module)
     self._emitAdd(module)
     self._epilog(module)
+    return module
+
+  ##############################################################################
+  # choose the ADD instruction for combining external C with internal C
+  # used in atomic=1 case to compute expected external data
+  ##############################################################################
+  def _chooseAddForAtomic(self, kernel, dst, src0, src1, comment):
+    module = Code.Module("chooseAddForAtomic")
+    if kernel["ProblemType"]["DataType"].isBFloat16():
+      if kernel["_GlobalAccumulation"]:
+        module.addInst("v_add_f32", dst, src0, src1, comment)
+    elif kernel["ProblemType"]["DataType"].isHalf():
+      if kernel["_GlobalAccumulation"]:
+        module.addInst("v_add_f32", dst, src0, src1, comment)
+      elif kernel["ProblemType"]["HighPrecisionAccumulate"]:
+        module.addInst("v_mad_mix need madmix bozo", \
+                       dst, src0, src1, \
+                       comment)
+      else:
+        module.addInst("v_pk_add_f16", \
+                       dst, src0, src1, \
+                       comment)
+    elif kernel["ProblemType"]["DataType"].isInt8x4() or kernel["ProblemType"]["DataType"].isInt8():
+      # assume v_add_i32 can be used in place of v_add_f32
+      # need to add saturation directive to v_add_i32 instruction to clamp integer arithmetic
+      module.addInst("_v_add_i32", \
+                     dst, src0, src1, \
+                     comment)
+    elif kernel["ProblemType"]["DataType"].isSingle():
+      module.addInst("v_add_f32", \
+                     dst, src0, src1, \
+                     comment)
+    else:
+       #support for double
+      module.addInst("v_add_f64", \
+                     dst, src0, src1, \
+                     comment)
+
     return module
 
   def _prolog(self, module: Code.Module):
@@ -633,7 +670,7 @@ class GlobalWriteBatchWriter(Component):
         # DGEMM use SRCS[2] register
         vgprIdx = 1*(bpm//4)
         # for atomic, data[1] = original c, data[0] = new c
-        module.addCode(self.parentWriter.chooseAddForAtomic(self.kernel, \
+        module.addCode(self._chooseAddForAtomic(self.kernel, \
                   vgpr(dataV+0,vgprCnt), vgpr(dataV+1*vgprIdx,vgprCnt), vgpr("ValuC+%u"%sumIdxV,vgprCnt), \
                   "desired value avi=%u"%avi))
 
@@ -755,7 +792,7 @@ class GlobalWriteBatchWriter(Component):
           module.addInst("v_mov_b32", vgpr(dataV+3), vgpr(atomicDestVgpr+1), "dataV+3 = tmp (new original C)" )
         else:
           module.addInst("v_mov_b32", vgpr(dataV+1), vgpr(atomicDestVgpr), "dataV+1 = tmp (new original C)" )
-        module.addCode(self.parentWriter.chooseAddForAtomic(self.kernel, \
+        module.addCode(self._chooseAddForAtomic(self.kernel, \
                         vgpr(dataV+0,vgprCnt), vgpr(dataV+1*vgprIdx,vgprCnt), vgpr("ValuC+%u"%sumIdxV,vgprCnt), \
                         "newC = rC + originalC"))
         if self.parentWriter.do["GlobalWrite"]:
