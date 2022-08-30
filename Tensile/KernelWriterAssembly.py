@@ -22,7 +22,7 @@
 from . import Code
 from .Common import gfxName, globalParameters, print2, printExit, printWarning, roundUp
 from .Component import Component
-from .Components.GlobalWriteBatch import GlobalWriteBatchWriter
+from .Components.GlobalWriteBatch import GlobalWriteBatchComponent
 from .KernelWriter import KernelWriter
 from .SolutionStructs import isPackedIndex
 from .Utils import ceil_divide
@@ -8010,11 +8010,11 @@ class KernelWriterAssembly(KernelWriter):
   def globalWriteBatch(self, kernel, activation, ss: StoreState, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
       batchElements, addrD, addrC, \
       tmpVgpr, bf16CVTVgprStruct, batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha) -> Code.Module:
-    gwriter = GlobalWriteBatchWriter(kernel, activation, ss, \
-      batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
-      batchElements, addrD, addrC, tmpVgpr, bf16CVTVgprStruct, \
-      batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, self)
-    return gwriter.emit()
+      gwriter = GlobalWriteBatchComponent.find(self)
+      return gwriter(kernel, activation, ss, \
+        batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
+        batchElements, addrD, addrC, tmpVgpr, bf16CVTVgprStruct, \
+        batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, self)
 
   ##############################################################################
   def openPrefetchGlobalRead2(self, kernel):

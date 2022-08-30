@@ -1,17 +1,24 @@
 from .. import Code
 from ..Common import globalParameters
 from ..DataType import DataType
-from ..Component import Component
+from ..Component import Component, GlobalWriteComponents
 from ..SolutionStructs import Solution
 from ..Activation import ActivationModule, ActivationType
 from ..AsmStoreState import StoreState
 from ..AsmUtils import vgpr, sgpr, replaceHolder, SaturateCastType
 from ..AsmAddressCalculation import AddrCalculation
 
-class GlobalWriteBatchWriter(Component):
-  def __call__(self, module):
-    return self.emit(module)
+class GlobalWriteBatchComponent(GlobalWriteComponents):
+  def __call__(self, kernel: Solution, activation: ActivationModule, ss: StoreState, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
+    batchElements, addrD, addrC, \
+    tmpVgpr, bf16CVTVgprStruct, batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, \
+    parentWriter) -> Code.Module:
+    return GlobalWriteBatchWriter(kernel, activation, ss, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
+      batchElements, addrD, addrC, \
+      tmpVgpr, bf16CVTVgprStruct, batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, \
+      parentWriter).emit()
 
+class GlobalWriteBatchWriter:
   def __init__(self, kernel: Solution, activation: ActivationModule, ss: StoreState, batchIdx, applyAlpha, beta, edge, atomic, gwvw, atomicW, \
     batchElements, addrD, addrC, \
     tmpVgpr, bf16CVTVgprStruct, batchElementSgprs, tmpSgpr, codeAccVgprRead, codeMulAlpha, \
